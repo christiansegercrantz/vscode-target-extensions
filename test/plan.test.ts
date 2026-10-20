@@ -1,0 +1,108 @@
+import { describe, expect, it } from 'vitest';
+import { findTarget, managedExtensions, parseConfig, referencesSelf, serializeTarget } from '../src/core/config';
+import { planTarget, type InstalledInfo } from '../src/core/plan';
+
+const SELF = 'me.target-extensions';
+
+const installed = (spec: Record<string, string[]>): Map<string, InstalledInfo> =>
+	new Map(Object.entries(spec).map(([id, dependencies]) => [id, { id, dependencies }]));
+
+const config = parseConfig(
+	{
+		python: ['ms-python.python', 'ms-python.vscode-pylance', 'ms-python.mypy'],
+		node: ['dbaeumer.vscode-eslint', 'esbenp.prettier-vscode'],
+	},
+	{
+		'repo:github.com/acme/api': { categories: ['python'], disable: ['ms-python.mypy'], enable: ['esbenp.prettier-vscode'] },
+		'folder:~/scratch/all': { categories: ['*'] },
+		'folder:~/Scratch/Mixed': { categories: ['node'], disable: ['eamodio.gitlens'] },
+	},
+);
+
+const all = installed({
+	'ms-python.python': [],
+	'ms-python.vscode-pylance': ['ms-python.python'],
+	'ms-python.mypy': [],
+	'dbaeumer.vscode-eslint': [],
+	'esbenp.prettier-vscode': [],
+	'eamodio.gitlens': [],
+});
+
+describe('parseConfig', () => {
+	it('cleans ids and drops malformed entries', () => {
+		const c = parseConfig({ A: [' Pub.Ext ', 'pub.ext', 3, ''], '*': ['x.y'], B: 'nope' }, { k: { categories: ['A', 7], enable: ['X.Y'] }, bad: 'nope' });
+		expect(c.categories).toEqual({ A: ['pub.ext'], B: [] });
+		expect(c.targets.k).toEqual({ categories: ['A'], enable: ['x.y'], disable: [] });
+		expect(c.targets.bad).toEqual({ categories: [], enable: [], disable: [] });
+	});
+
+	it('finds targets ignoring case', () => {
+		expect(findTarget(config, 'folder:~/scratch/mixed')?.key).toBe('folder:~/Scratch/Mixed');
+		expect(findTarget(config, 'folder:~/nope')).toBeUndefined();
+	});
+
+	it('omits empty override lists when serializing', () => {
+		expect(serializeTarget({ categories: ['a'], enable: [], disable: [] })).toEqual({ categories: ['a'] });
+	});
+});
+
+describe('managed extensions', () => {
+	it('are the union of all categories, never including this extension', () => {
+		const c = parseConfig({ a: ['x.y', SELF], b: ['x.y', 'p.q'] }, {});
+		expect(managedExtensions(c, SELF)).toEqual(new Set(['x.y', 'p.q']));
+		expect(referencesSelf(c, SELF)).toBe(true);
+		expect(referencesSelf(config, SELF)).toBe(false);
+	});
+});
+
+describe('planTarget', () => {
+	it('enables nothing for an unconfigured Target', () => {
+		const plan = planTarget(config, 'repo:github.com/other/x', all, SELF);
+		expect(plan.configured).toBe(false);
+		expect(plan.enable.size).toBe(0);
+	});
+
+	it('enables category members, applies overrides, and lets disable beat categories', () => {
+		const plan = planTarget(config, 'repo:github.com/acme/api', all, SELF);
+		expect([...plan.enable].sort()).toEqual(['esbenp.prettier-vscode', 'ms-python.python', 'ms-python.vscode-pylance']);
+		expect(plan.disable.size).toBe(0);
+	});
+
+	it('enables every managed extension for the * category', () => {
+		const plan = planTarget(config, 'folder:~/scratch/all', all, SELF);
+		expect(plan.enable).toEqual(plan.managed);
+	});
+
+	it('disables unmanaged extensions on request, and ignores enabling them', () => {
+		const plan = planTarget(config, 'folder:~/scratch/mixed', all, SELF);
+		expect([...plan.disable]).toEqual(['eamodio.gitlens']);
+		expect([...plan.enable].sort()).toEqual(['dbaeumer.vscode-eslint', 'esbenp.prettier-vscode']);
+	});
+
+	it('pulls in managed dependencies that a category or override left out', () => {
+		const c = parseConfig({ py: ['ms-python.python', 'ms-python.vscode-pylance'] }, { 'folder:~/x': { categories: ['py'], disable: ['ms-python.python'] } });
+		const plan = planTarget(c, 'folder:~/x', all, SELF);
+		expect(plan.enable.has('ms-python.python')).toBe(true);
+		expect(plan.addedDependencies).toEqual([{ id: 'ms-python.python', requiredBy: 'ms-python.vscode-pylance' }]);
+		expect([...plan.direct]).toEqual(['ms-python.vscode-pylance']);
+	});
+
+	it('keeps an unmanaged dependency enabled even when the Target disables it', () => {
+		const c = parseConfig({ py: ['ms-python.vscode-pylance'] }, { 'folder:~/x': { categories: ['py'], disable: ['ms-python.python'] } });
+		const plan = planTarget(c, 'folder:~/x', all, SELF);
+		expect(plan.disable.has('ms-python.python')).toBe(false);
+	});
+
+	it('reports referenced extensions that are not installed', () => {
+		const plan = planTarget(config, 'repo:github.com/acme/api', installed({ 'ms-python.python': [] }), SELF);
+		expect(plan.missing).toEqual(['esbenp.prettier-vscode', 'ms-python.mypy', 'ms-python.vscode-pylance']);
+	});
+
+	it('never plans anything for this extension', () => {
+		const c = parseConfig({ a: [SELF, 'x.y'] }, { 'folder:~/x': { categories: ['a'], disable: [SELF] } });
+		const plan = planTarget(c, 'folder:~/x', installed({ 'x.y': [], [SELF]: [] }), SELF);
+		expect([...plan.enable]).toEqual(['x.y']);
+		expect(plan.disable.size).toBe(0);
+		expect(plan.missing).toEqual([]);
+	});
+});

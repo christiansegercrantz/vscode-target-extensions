@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.vscode-test/
+*.vsix
+.vscode/mise-tools/
+.vscode/settings.json

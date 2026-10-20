@@ -1,0 +1,47 @@
+[tools]
+node = "22"
+
+[env]
+_.path = ["{{config_root}}/node_modules/.bin"]
+
+[tasks.install]
+description = "Install dependencies"
+run = "npm install"
+alias = "i"
+
+[tasks.typecheck]
+description = "Type-check sources and tests"
+run = "tsc --noEmit"
+
+[tasks.test]
+description = "Run unit tests"
+run = "vitest run"
+
+[tasks."test:watch"]
+description = "Run unit tests in watch mode"
+run = "vitest"
+
+[tasks.build]
+description = "Bundle the extension and the uninstall hook into dist/"
+run = [
+  "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --sourcemap --outfile=dist/extension.js",
+  "esbuild src/uninstall.ts --bundle --platform=node --format=cjs --external:node:sqlite --outfile=dist/uninstall.js",
+]
+
+[tasks.watch]
+description = "Rebuild the extension on change"
+run = "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --sourcemap --outfile=dist/extension.js --watch"
+
+[tasks."test:integration"]
+description = "Run integration tests in a real VS Code with a throwaway profile"
+depends = ["build"]
+run = "node scripts/run-integration.mjs"
+
+[tasks.check]
+description = "Typecheck and unit tests"
+depends = ["typecheck", "test"]
+
+[tasks.package]
+description = "Build the .vsix"
+depends = ["check", "build"]
+run = "vsce package --no-dependencies --allow-missing-repository --skip-license"

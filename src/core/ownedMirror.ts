@@ -1,0 +1,90 @@
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+
+const DISABLED_KEY = 'extensionsIdentifiers/disabled';
+const MIRROR_FILE = 'owned.json';
+
+/**
+ * Copy of the ids the tool disabled globally, kept next to the extension's storage. The uninstall hook runs as
+ * plain Node without the VS Code API, so it cannot read the extension's state and relies on this file.
+ */
+export interface OwnedMirror {
+	/** The profile's state database that holds VS Code's "Disable" list. */
+	dbPath: string;
+	ids: string[];
+}
+
+export function writeMirror(globalStoragePath: string, ids: string[]): void {
+	const mirror: OwnedMirror = { dbPath: join(dirname(globalStoragePath), 'state.vscdb'), ids };
+	mkdirSync(globalStoragePath, { recursive: true });
+	writeFileSync(join(globalStoragePath, MIRROR_FILE), JSON.stringify(mirror));
+}
+
+interface Statement {
+	get(...params: unknown[]): { value?: unknown } | undefined;
+	run(...params: unknown[]): unknown;
+}
+interface Database {
+	exec(sql: string): void;
+	prepare(sql: string): Statement;
+	close(): void;
+}
+
+function openDatabase(path: string): Database {
+	// Loaded lazily: older runtimes have no node:sqlite, and the hook is best-effort.
+	const { DatabaseSync } = require('node:sqlite') as { DatabaseSync: new (path: string) => Database };
+	return new DatabaseSync(path);
+}
+
+function removeFromDisabledList(dbPath: string, ids: Set<string>): boolean {
+	const db = openDatabase(dbPath);
+	try {
+		db.exec('PRAGMA busy_timeout = 3000');
+		const row = db.prepare('SELECT value FROM ItemTable WHERE key = ?').get(DISABLED_KEY);
+		if (typeof row?.value !== 'string') {
+			return false;
+		}
+		const list = JSON.parse(row.value) as { id?: string }[];
+		const kept = list.filter(e => !ids.has((e.id ?? '').toLowerCase()));
+		if (kept.length === list.length) {
+			return false;
+		}
+		if (kept.length) {
+			db.prepare('UPDATE ItemTable SET value = ? WHERE key = ?').run(JSON.stringify(kept), DISABLED_KEY);
+		} else {
+			db.prepare('DELETE FROM ItemTable WHERE key = ?').run(DISABLED_KEY);
+		}
+		return true;
+	} finally {
+		db.close();
+	}
+}
+
+function mirrorFiles(userDataDir: string, extensionId: string): string[] {
+	const files = [join(userDataDir, 'User', 'globalStorage', extensionId, MIRROR_FILE)];
+	const profiles = join(userDataDir, 'User', 'profiles');
+	if (existsSync(profiles)) {
+		for (const profile of readdirSync(profiles)) {
+			files.push(join(profiles, profile, 'globalStorage', extensionId, MIRROR_FILE));
+		}
+	}
+	return files.filter(existsSync);
+}
+
+/** Removes the global "Disable" entries the tool added from every profile found under the given VS Code data folders. */
+export function cleanupGlobalDisables(userDataDirs: string[], extensionId: string, log: (message: string) => void = () => undefined): number {
+	let cleaned = 0;
+	for (const dir of userDataDirs) {
+		for (const file of mirrorFiles(dir, extensionId.toLowerCase())) {
+			try {
+				const mirror = JSON.parse(readFileSync(file, 'utf8')) as OwnedMirror;
+				if (mirror.ids.length && existsSync(mirror.dbPath) && removeFromDisabledList(mirror.dbPath, new Set(mirror.ids))) {
+					cleaned++;
+				}
+			} catch (error) {
+				log(`Could not clean up ${file}: ${error instanceof Error ? error.message : String(error)}`);
+			}
+		}
+	}
+	return cleaned;
+}

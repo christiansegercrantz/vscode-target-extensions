@@ -1,0 +1,110 @@
+{
+  "name": "target-extensions",
+  "displayName": "Target Extensions",
+  "description": "Keep chosen extensions off everywhere except in the workspaces, repositories and folders where you want them.",
+  "version": "0.1.0",
+  "publisher": "csegercrantz",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "scripts": {
+    "vscode:uninstall": "node ./dist/uninstall.js"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "targetExtensions.menu",
+        "title": "Show Menu",
+        "category": "Target Extensions"
+      },
+      {
+        "command": "targetExtensions.chooseCategories",
+        "title": "Choose Categories for This Target…",
+        "category": "Target Extensions"
+      },
+      {
+        "command": "targetExtensions.overrideExtensions",
+        "title": "Override Extensions for This Target…",
+        "category": "Target Extensions"
+      },
+      {
+        "command": "targetExtensions.editCategories",
+        "title": "Edit Categories…",
+        "category": "Target Extensions"
+      },
+      {
+        "command": "targetExtensions.apply",
+        "title": "Apply Now",
+        "category": "Target Extensions"
+      },
+      {
+        "command": "targetExtensions.restoreAll",
+        "title": "Restore All Extensions",
+        "category": "Target Extensions"
+      }
+    ],
+    "configuration": {
+      "title": "Target Extensions",
+      "properties": {
+        "targetExtensions.categories": {
+          "type": "object",
+          "scope": "application",
+          "default": {},
+          "markdownDescription": "Named sets of extensions, e.g. `{ \"python\": [\"ms-python.python\"] }`. An extension in any category is *managed*: off by default, on only in Targets that apply one of its categories.",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "targetExtensions.targets": {
+          "type": "object",
+          "scope": "application",
+          "default": {},
+          "markdownDescription": "Per-Target rules, keyed by `workspace:<path>`, `repo:<host>/<owner>/<name>` or `folder:<path>`. `categories` may contain `*` for every managed extension. `enable` and `disable` override the categories.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "categories": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "enable": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "disable": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "~1.90.0",
+    "@vscode/vsce": "^3.2.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  }
+}
