@@ -43,6 +43,8 @@ VS Code has no API for one extension to disable another. This extension writes V
 
 Uninstalling runs a best-effort cleanup of the global disable entries; **Restore All Extensions** does it explicitly and also switches activation off.
 
+When a Target refers to extensions that are not installed, one **Install** click installs them all. VS Code would otherwise ask about Settings Sync for each one, so they are installed as "do not sync". In a local window they are then switched back to synced through VS Code's internal *Sync This Extension* action. Settings Sync does not cover a remote's extensions, so a remote window (SSH, WSL, Dev Containers) skips that step and also offers **Pick from local…**, which opens VS Code's own picker for copying locally installed extensions to the remote. VS Code may still ask once per untrusted publisher.
+
 ## Development
 
 The toolchain and tasks are managed with [mise](https://mise.jdx.dev): `mise install`, then:

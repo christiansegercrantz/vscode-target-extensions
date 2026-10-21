@@ -14,6 +14,7 @@ const ACTIVATED = 'activated';
 const OWNED_GLOBAL = 'owned.globalDisabled';
 const OWNED_WS_ENABLED = 'owned.workspaceEnabled';
 const OWNED_WS_DISABLED = 'owned.workspaceDisabled';
+const PICK_FROM_LOCAL = 'Pick from local…';
 
 export interface State {
 	config: Config;
@@ -192,12 +193,12 @@ export class Controller implements vscode.Disposable {
 		}
 		if (plan.missing.length && this.once(`missing:${plan.missing.join(',')}`)) {
 			void vscode.window
-				.showWarningMessage(`Not installed on this machine: ${plan.missing.join(', ')}`, 'Install', 'Remove from config')
+				.showWarningMessage(`Not installed on this machine: ${plan.missing.join(', ')}`, 'Install', ...(vscode.env.remoteName ? [PICK_FROM_LOCAL] : []), 'Remove from config')
 				.then(async choice => {
 					if (choice === 'Install') {
-						for (const id of plan.missing) {
-							await vscode.commands.executeCommand('workbench.extensions.installExtension', id);
-						}
+						await this.install(plan.missing);
+					} else if (choice === PICK_FROM_LOCAL) {
+						await vscode.commands.executeCommand('workbench.extensions.actions.installLocalExtensionsInRemote');
 					} else if (choice === 'Remove from config') {
 						await removeIds(readConfig(), new Set(plan.missing));
 					}
@@ -206,6 +207,36 @@ export class Controller implements vscode.Disposable {
 		const deps = plan.addedDependencies.map(d => `${d.id} (required by ${d.requiredBy})`);
 		if (deps.length && this.once(`deps:${deps.join(',')}`)) {
 			void vscode.window.showInformationMessage(`Also enabled: ${deps.join(', ')}`);
+		}
+	}
+
+	/**
+	 * Installs after the one "Install" click. Without `donotSync`, VS Code asks about Settings Sync once per
+	 * extension, so install machine-scoped and then, in a local window, switch sync back on for what was just
+	 * installed. Settings Sync does not cover a remote's extensions, so a remote window skips that step.
+	 */
+	private async install(ids: readonly string[]): Promise<void> {
+		const failed: string[] = [];
+		for (const id of ids) {
+			try {
+				await vscode.commands.executeCommand('workbench.extensions.installExtension', id, { donotSync: true });
+			} catch (error) {
+				failed.push(id);
+				this.log.appendLine(`Could not install ${id}: ${String(error)}`);
+			}
+		}
+		if (failed.length) {
+			void vscode.window.showWarningMessage(`Could not install: ${failed.join(', ')}`);
+		}
+		if (vscode.env.remoteName) {
+			return;
+		}
+		const { installed } = await this.gather();
+		// The command toggles, so only flip extensions VS Code recorded as machine-scoped.
+		for (const id of ids) {
+			if (installed.get(id)?.machineScoped) {
+				await vscode.commands.executeCommand('workbench.extensions.action.toggleIgnoreExtension', id).then(undefined, error => this.log.appendLine(`Could not sync ${id}: ${String(error)}`));
+			}
 		}
 	}
 

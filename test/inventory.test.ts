@@ -30,13 +30,14 @@ it('recognizes a disabled SSH resolver from its installed manifest, without a ru
 		activationEvents: ['onResolveRemoteAuthority:ssh'],
 		extensionDependencies: ['Remote.Helper'],
 	}));
-	await writeFile(extensionsJson, JSON.stringify([{ identifier: { id: ssh }, relativeLocation: 'remote-ssh' }]));
+	await writeFile(extensionsJson, JSON.stringify([{ identifier: { id: ssh }, relativeLocation: 'remote-ssh', metadata: { isMachineScoped: true } }]));
 	const installed = await readInstalled({
 		userDataDir: directory,
 		extensionsDir: directory,
 		profile: { key: 'default', extensionsJson: [extensionsJson], stateDb: join(directory, 'state.vscdb') },
 	});
 	expect(installed.get(ssh)?.activationEvents).toEqual(['onResolveRemoteAuthority:ssh']);
+	expect(installed.get(ssh)?.machineScoped).toBe(true);
 	const plan = planTarget(parseConfig({ remote: [ssh, 'remote.helper'] }, {}), undefined, installed, 'me.target-extensions');
 	expect(plan.protected).toEqual(new Set([ssh, 'remote.helper']));
 	expect(plan.managed.size).toBe(0);

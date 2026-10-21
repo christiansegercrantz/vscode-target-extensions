@@ -7,12 +7,15 @@ import { resolveProfile, type Profile } from '../core/profile';
 export interface InstalledExtension extends InstalledInfo {
 	displayName: string;
 	isBuiltin: boolean;
+	/** Installed with "Do not sync". */
+	machineScoped?: boolean;
 }
 
 interface ExtensionsJsonEntry {
 	identifier?: { id?: string };
 	location?: { path?: string; fsPath?: string } | string;
 	relativeLocation?: string;
+	metadata?: { isMachineScoped?: boolean };
 }
 
 interface Manifest {
@@ -92,7 +95,8 @@ export async function readInstalled(host: Host | undefined): Promise<Map<string,
 		}
 		for (const folder of locationPaths(entry, host.extensionsDir)) {
 			try {
-				result.set(id, toExtension(id, JSON.parse(await readFile(join(folder, 'package.json'), 'utf8')) as Manifest, false));
+				const ext = toExtension(id, JSON.parse(await readFile(join(folder, 'package.json'), 'utf8')) as Manifest, false);
+				result.set(id, { ...ext, machineScoped: entry.metadata?.isMachineScoped === true });
 				return;
 			} catch {
 				// Not at this location; try the next, and skip the entry if the folder is gone.
