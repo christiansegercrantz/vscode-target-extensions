@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { categoriesOf, findTarget, managedExtensions, parseConfig, referencesSelf, serializeTarget, setMembership } from '../src/core/config';
 import { planTarget, type InstalledInfo } from '../src/core/plan';
+import { keysOf } from '../src/core/target';
 
 const SELF = 'me.target-extensions';
 
@@ -126,5 +127,27 @@ describe('category membership', () => {
 		const next = setMembership({ a: ['p.q'], b: ['p.q'] }, 'p.q', []);
 		expect(next).toEqual({ a: [], b: [] });
 		expect(managedExtensions(parseConfig(next, {}), SELF).has('p.q')).toBe(false);
+	});
+});
+
+describe('rules saved under an earlier Target key', () => {
+	const target = { key: 'repo:github.com/acme/new', aliases: ['repo:~/code/new', 'folder:~/code/new'] };
+	const rules = (keys: Record<string, string[]>) => parseConfig({ python: ['ms-python.python'] }, Object.fromEntries(Object.entries(keys).map(([k, c]) => [k, { categories: c }])));
+
+	it('still apply after a repository gains a remote', () => {
+		const config = rules({ 'repo:~/code/new': ['python'] });
+		expect(planTarget(config, target.key, all, SELF).configured).toBe(false);
+		const plan = planTarget(config, keysOf(target), all, SELF);
+		expect(plan.configured).toBe(true);
+		expect([...plan.enable]).toEqual(['ms-python.python']);
+	});
+
+	it('still apply after a folder becomes a repository', () => {
+		expect(planTarget(rules({ 'folder:~/code/new': ['python'] }), keysOf(target), all, SELF).configured).toBe(true);
+	});
+
+	it('prefer the current key over an older one', () => {
+		const config = parseConfig({ python: ['ms-python.python'], node: ['dbaeumer.vscode-eslint'] }, { 'repo:~/code/new': { categories: ['python'] }, 'repo:github.com/acme/new': { categories: ['node'] } });
+		expect([...planTarget(config, keysOf(target), all, SELF).enable]).toEqual(['dbaeumer.vscode-eslint']);
 	});
 });

@@ -46,15 +46,16 @@ export function parseConfig(rawCategories: unknown, rawTargets: unknown): Config
 	return { categories, targets };
 }
 
-/** Looks a Target up by key, ignoring case (repository keys are lower-case, paths may not be). */
-export function findTarget(config: Config, key: string): { key: string; config: TargetConfig } | undefined {
-	const exact = config.targets[key];
-	if (exact) {
-		return { key, config: exact };
+/** Looks a Target up by key, ignoring case (repository keys are lower-case, paths may not be). Earlier keys in the list win. */
+export function findTarget(config: Config, keys: string | readonly string[]): { key: string; config: TargetConfig } | undefined {
+	for (const key of typeof keys === 'string' ? [keys] : keys) {
+		const lower = key.toLowerCase();
+		const match = Object.keys(config.targets).find(k => k === key) ?? Object.keys(config.targets).find(k => k.toLowerCase() === lower);
+		if (match) {
+			return { key: match, config: config.targets[match]! };
+		}
 	}
-	const lower = key.toLowerCase();
-	const match = Object.keys(config.targets).find(k => k.toLowerCase() === lower);
-	return match ? { key: match, config: config.targets[match]! } : undefined;
+	return undefined;
 }
 
 /** Extensions in at least one category, minus this extension itself. */

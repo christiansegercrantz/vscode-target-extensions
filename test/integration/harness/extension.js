@@ -104,6 +104,23 @@ const phases = {
 		assert.ok(state.installed.has('fake.defaultonly'), 'the Default profile offers its own extension');
 	},
 
+	// Rules saved before the repository had a remote (so under its folder key) must still apply, and move to
+	// the repository key when saved again.
+	async alias({ controller, settings }) {
+		const oldKey = `folder:${vscode.workspace.workspaceFolders[0].uri.fsPath}`;
+		const cfg = vscode.workspace.getConfiguration('targetExtensions');
+		await cfg.update('categories', { demo: MANAGED }, vscode.ConfigurationTarget.Global);
+		await cfg.update('targets', { [oldKey]: { categories: ['demo'] } }, vscode.ConfigurationTarget.Global);
+		const state = await controller.gather();
+		assert.equal(state.target.key, TARGET, 'the window now resolves to its origin key');
+		assert.ok(state.plan.configured, 'rules saved under the old folder key still apply');
+		assert.deepEqual(ours([...state.plan.enable].map(id => ({ id }))), [...MANAGED].sort(), 'the old rules enable their categories');
+
+		await settings.saveTarget(settings.readConfig(), state.target, { categories: ['demo'], enable: [], disable: [] });
+		const keys = Object.keys(vscode.workspace.getConfiguration('targetExtensions').get('targets'));
+		assert.deepEqual(keys, [TARGET], `the rules moved to the origin key, found ${keys}`);
+	},
+
 	async phase4() {
 		for (const id of MANAGED) {
 			assert.ok(present(id), `${id} should be on after restore`);

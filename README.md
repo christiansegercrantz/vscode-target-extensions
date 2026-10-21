@@ -6,7 +6,7 @@ Keep chosen VS Code extensions **off everywhere except in the workspaces, reposi
 
 - A **Category** is a named set of extensions (`python`, `node`, …). An extension in at least one category is *managed*: it is turned off for the whole profile and turned on only in the Targets that use one of its categories.
 - A window's **Target** is the first of: the saved `.code-workspace` file, the git repository (identified by its `origin` URL, so re-clones and subfolders match), or the folder.
-- A Target applies categories and can **override** single extensions (on or off).
+- A Target applies categories and can **override** single extensions (on or off). Rules saved under an earlier key still apply when a repository gains a remote or a folder becomes a repository, and move to the current key the next time they are saved.
 - Extensions in no category are never touched. This extension never manages itself.
 - Dependencies of an enabled extension are enabled with it.
 
@@ -15,6 +15,8 @@ Nothing is disabled until you **activate** it on a machine, by answering the fir
 Empty windows and unsaved multi-root workspaces have no Target, so managed extensions stay off there.
 
 ## Settings (user settings, synced)
+
+The settings are application-scoped, so VS Code stores them in the **Default** profile's `settings.json` and shares them with every profile. A non-default profile's own `settings.json` will not contain them; use **Open Config File** to jump to the right one.
 
 ```jsonc
 "targetExtensions.categories": {

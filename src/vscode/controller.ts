@@ -5,7 +5,7 @@ import { findTarget, referencesSelf, type Config } from '../core/config';
 import { writeMirror } from '../core/ownedMirror';
 import { planTarget, type Plan } from '../core/plan';
 import { pendingChanges, reconcile, type EnablementLists, type EnablementStore, type Ownership } from '../core/reconcile';
-import type { Target } from '../core/target';
+import { keysOf, type Target } from '../core/target';
 import { readInstalled, resolveHost, type Host, type InstalledExtension } from './inventory';
 import { readConfig, removeIds, saveTarget } from './settings';
 import { currentTarget } from './target';
@@ -75,7 +75,7 @@ export class Controller implements vscode.Disposable {
 		this.host = host;
 		const [target, installed] = await Promise.all([this.target, readInstalled(host)]);
 		const config = readConfig();
-		return { config, target, installed, plan: planTarget(config, target?.key, installed, this.selfId), activated: this.isActivated() };
+		return { config, target, installed, plan: planTarget(config, target && keysOf(target), installed, this.selfId), activated: this.isActivated() };
 	}
 
 	private readOwned(): Ownership {
@@ -242,8 +242,8 @@ export class Controller implements vscode.Disposable {
 				if (choice === 'Choose categories…') {
 					await vscode.commands.executeCommand('targetExtensions.chooseCategories');
 				} else if (choice === 'Enable all' || choice === 'Keep off') {
-					const existing = findTarget(config, target.key)?.config;
-					await saveTarget(config, target.key, { categories: choice === 'Enable all' ? ['*'] : [], enable: existing?.enable ?? [], disable: existing?.disable ?? [] });
+					const existing = findTarget(config, keysOf(target))?.config;
+					await saveTarget(config, target, { categories: choice === 'Enable all' ? ['*'] : [], enable: existing?.enable ?? [], disable: existing?.disable ?? [] });
 					await this.setActivated(true);
 					await this.schedule();
 				}

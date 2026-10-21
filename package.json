@@ -2,7 +2,7 @@
   "name": "target-extensions",
   "displayName": "Target Extensions",
   "description": "Keep chosen extensions off everywhere except in the workspaces, repositories and folders where you want them.",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "publisher": "csegercrantz",
   "license": "AGPL-3.0-or-later",
   "private": true,
@@ -52,6 +52,11 @@
         "category": "Target Extensions"
       },
       {
+        "command": "targetExtensions.openConfig",
+        "title": "Open Config File",
+        "category": "Target Extensions"
+      },
+      {
         "command": "targetExtensions.restoreAll",
         "title": "Restore All Extensions",
         "category": "Target Extensions"
@@ -64,7 +69,7 @@
           "type": "object",
           "scope": "application",
           "default": {},
-          "markdownDescription": "Named sets of extensions, e.g. `{ \"python\": [\"ms-python.python\"] }`. An extension in any category is *managed*: off by default, on only in Targets that apply one of its categories.",
+          "markdownDescription": "Named sets of extensions, e.g. `{ \"python\": [\"ms-python.python\"] }`. An extension in any category is *managed*: off by default, on only in Targets that apply one of its categories. Stored in the Default profile's `settings.json` and shared by every profile; **Target Extensions: Open Config File** opens it.",
           "additionalProperties": {
             "type": "array",
             "items": {
@@ -76,7 +81,7 @@
           "type": "object",
           "scope": "application",
           "default": {},
-          "markdownDescription": "Per-Target rules, keyed by `workspace:<path>`, `repo:<host>/<owner>/<name>` or `folder:<path>`. `categories` may contain `*` for every managed extension. `enable` and `disable` override the categories.",
+          "markdownDescription": "Per-Target rules, keyed by `workspace:<path>`, `repo:<host>/<owner>/<name>` or `folder:<path>`. `categories` may contain `*` for every managed extension. `enable` and `disable` override the categories. Stored in the Default profile's `settings.json` and shared by every profile; **Target Extensions: Open Config File** opens it.",
           "additionalProperties": {
             "type": "object",
             "properties": {

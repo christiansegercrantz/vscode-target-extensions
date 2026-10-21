@@ -8,7 +8,15 @@ export interface Target {
 	key: string;
 	/** Short name for UI. */
 	label: string;
+	/**
+	 * Keys this Target was known by before, such as the repository path from before it had a remote. Rules saved
+	 * under one still apply; they move to `key` the next time the Target is saved.
+	 */
+	aliases: string[];
 }
+
+/** Every key whose rules apply to the Target, most current first. */
+export const keysOf = (t: Pick<Target, 'key' | 'aliases'>): string[] => [t.key, ...t.aliases];
 
 export interface GitInfo {
 	root: string;
@@ -45,6 +53,7 @@ export async function resolveTarget(env: TargetEnvironment): Promise<Target | un
 			kind: 'workspace',
 			key: `workspace:${tildify(env.workspaceFile, env.home)}`,
 			label: baseName(env.workspaceFile).replace(/\.code-workspace$/, ''),
+			aliases: [],
 		};
 	}
 	if (env.folders.length !== 1) {
@@ -52,12 +61,13 @@ export async function resolveTarget(env: TargetEnvironment): Promise<Target | un
 	}
 	const folder = env.folders[0]!;
 	const git = await env.git(folder);
+	const folderKey = `folder:${tildify(folder, env.home)}`;
 	if (git?.originUrl) {
 		const normalized = normalizeRepoUrl(git.originUrl);
-		return { kind: 'repo', key: `repo:${normalized}`, label: normalized.split('/').slice(-2).join('/') };
+		return { kind: 'repo', key: `repo:${normalized}`, label: normalized.split('/').slice(-2).join('/'), aliases: [`repo:${tildify(git.root, env.home)}`, folderKey] };
 	}
 	if (git) {
-		return { kind: 'repo', key: `repo:${tildify(git.root, env.home)}`, label: baseName(git.root) };
+		return { kind: 'repo', key: `repo:${tildify(git.root, env.home)}`, label: baseName(git.root), aliases: [folderKey] };
 	}
-	return { kind: 'folder', key: `folder:${tildify(folder, env.home)}`, label: baseName(folder) };
+	return { kind: 'folder', key: folderKey, label: baseName(folder), aliases: [] };
 }

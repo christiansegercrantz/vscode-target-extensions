@@ -29,10 +29,10 @@ export interface Plan {
  * What a Target wants: managed extensions enabled by its categories and overrides, with dependencies
  * pulled in, and unmanaged extensions it disables.
  */
-export function planTarget(config: Config, targetKey: string | undefined, installed: ReadonlyMap<string, InstalledInfo>, selfId: string): Plan {
+export function planTarget(config: Config, targetKeys: string | readonly string[] | undefined, installed: ReadonlyMap<string, InstalledInfo>, selfId: string): Plan {
 	const self = selfId.toLowerCase();
 	const managed = managedExtensions(config, self);
-	const entry = targetKey ? findTarget(config, targetKey)?.config : undefined;
+	const entry = targetKeys ? findTarget(config, targetKeys)?.config : undefined;
 	const plan: Plan = { managed, configured: !!entry, enable: new Set(), direct: new Set(), disable: new Set(), addedDependencies: [], missing: [] };
 	if (!entry) {
 		return plan;

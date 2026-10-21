@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { findTarget, parseConfig, serializeTarget, type Config, type TargetConfig } from '../core/config';
+import { parseConfig, serializeTarget, type Config, type TargetConfig } from '../core/config';
+import { keysOf, type Target } from '../core/target';
 
 const SECTION = 'targetExtensions';
 
@@ -16,11 +17,11 @@ export async function saveCategories(categories: Config['categories']): Promise<
 	await settings().update('categories', categories, vscode.ConfigurationTarget.Global);
 }
 
-/** Replaces one Target's rules, keeping the key it is already stored under. */
-export async function saveTarget(config: Config, key: string, target: TargetConfig): Promise<void> {
-	const storedKey = findTarget(config, key)?.key ?? key;
-	const targets = Object.fromEntries(Object.entries(config.targets).map(([k, v]) => [k, serializeTarget(v)]));
-	targets[storedKey] = serializeTarget(target);
+/** Replaces one Target's rules and stores them under its current key, dropping the older keys they were saved under. */
+export async function saveTarget(config: Config, target: Target, value: TargetConfig): Promise<void> {
+	const replaced = new Set(keysOf(target).map(k => k.toLowerCase()));
+	const targets = Object.fromEntries(Object.entries(config.targets).filter(([k]) => !replaced.has(k.toLowerCase())).map(([k, v]) => [k, serializeTarget(v)]));
+	targets[target.key] = serializeTarget(value);
 	await settings().update('targets', targets, vscode.ConfigurationTarget.Global);
 }
 

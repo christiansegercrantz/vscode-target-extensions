@@ -24,6 +24,7 @@ interface Manifest {
 
 /** The shared extensions folder and the profile this window runs in. */
 export interface Host {
+	userDataDir: string;
 	extensionsDir: string;
 	profile: Profile;
 }
@@ -48,7 +49,7 @@ export async function resolveHost(context: vscode.ExtensionContext): Promise<Hos
 	const userDataDir = match[1]!;
 	const extensionsDir = dirname(context.extensionPath);
 	const storage = await readFile(join(userDataDir, 'User', 'globalStorage', 'storage.json'), 'utf8').then(text => JSON.parse(text) as unknown, () => undefined);
-	return { extensionsDir, profile: resolveProfile(storage, workspaceUri(), userDataDir, extensionsDir) };
+	return { userDataDir, extensionsDir, profile: resolveProfile(storage, workspaceUri(), userDataDir, extensionsDir) };
 }
 
 /** Candidate folders for an entry: the recorded absolute location first, then relative to the extensions dir. */

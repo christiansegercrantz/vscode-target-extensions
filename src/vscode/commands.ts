@@ -1,7 +1,10 @@
+import { join } from 'node:path';
 import * as vscode from 'vscode';
 import { ALL_CATEGORY, categoriesOf, findTarget, setMembership, type Config, type TargetConfig } from '../core/config';
 import { planTarget } from '../core/plan';
+import { keysOf } from '../core/target';
 import type { Controller, State } from './controller';
+import { resolveHost } from './inventory';
 import { saveCategories, saveTarget } from './settings';
 
 const NO_TARGET = 'Open a folder or a saved workspace first: this window has no Target.';
@@ -35,7 +38,7 @@ async function chooseCategories(controller: Controller): Promise<void> {
 		}
 		return;
 	}
-	const current = findTarget(config, target.key)?.config;
+	const current = findTarget(config, keysOf(target))?.config;
 	const picked = await vscode.window.showQuickPick(
 		[
 			{ label: '$(star) All managed extensions', description: ALL_CATEGORY, category: ALL_CATEGORY, picked: !!current?.categories.includes(ALL_CATEGORY) },
@@ -52,7 +55,7 @@ async function chooseCategories(controller: Controller): Promise<void> {
 		return;
 	}
 	const categories = picked.some(p => p.category === ALL_CATEGORY) ? [ALL_CATEGORY] : picked.map(p => p.category);
-	await saveTarget(config, target.key, { categories, enable: current?.enable ?? [], disable: current?.disable ?? [] });
+	await saveTarget(config, target, { categories, enable: current?.enable ?? [], disable: current?.disable ?? [] });
 	await controller.setActivated(true);
 	await controller.schedule();
 }
@@ -63,11 +66,11 @@ async function overrideExtensions(controller: Controller): Promise<void> {
 		return;
 	}
 	const { config, target, installed, plan } = state;
-	const current: TargetConfig = findTarget(config, target.key)?.config ?? { categories: [], enable: [], disable: [] };
+	const current: TargetConfig = findTarget(config, keysOf(target))?.config ?? { categories: [], enable: [], disable: [] };
 
 	// What the categories alone would do, so only the differences are stored as overrides.
 	const base: Config = { ...config, targets: { ...config.targets, [target.key]: { ...current, enable: [], disable: [] } } };
-	const derived = planTarget(base, target.key, installed, controller.selfId);
+	const derived = planTarget(base, keysOf(target), installed, controller.selfId);
 	// Dependencies don't count: they are only on while something else needs them, so a checked one needs its own override.
 	const derivedOn = (id: string) => !derived.managed.has(id) || derived.direct.has(id);
 	const effectiveOn = (id: string) => (plan.managed.has(id) ? plan.enable.has(id) : !plan.disable.has(id));
@@ -93,9 +96,9 @@ async function overrideExtensions(controller: Controller): Promise<void> {
 	const enable = [...current.enable.filter(id => !known.has(id)), ...universe.filter(e => on.has(e.id) && !derivedOn(e.id)).map(e => e.id)];
 	const disable = [...current.disable.filter(id => !known.has(id)), ...universe.filter(e => !on.has(e.id) && derivedOn(e.id)).map(e => e.id)];
 	const next: TargetConfig = { ...current, enable, disable };
-	await saveTarget(config, target.key, next);
+	await saveTarget(config, target, next);
 
-	const after = planTarget({ ...config, targets: { ...config.targets, [target.key]: next } }, target.key, installed, controller.selfId);
+	const after = planTarget({ ...config, targets: { ...config.targets, [target.key]: next } }, keysOf(target), installed, controller.selfId);
 	if (after.addedDependencies.length) {
 		void vscode.window.showWarningMessage(
 			`Kept on because other enabled extensions need them: ${after.addedDependencies.map(d => `${d.id} (for ${d.requiredBy})`).join(', ')}`,
@@ -225,6 +228,17 @@ async function setExtensionCategories(controller: Controller, arg: unknown): Pro
 	await controller.schedule();
 }
 
+/** The settings are application-scoped: VS Code keeps them in the Default profile's settings.json for every profile. */
+async function openConfigFile(context: vscode.ExtensionContext): Promise<void> {
+	const host = await resolveHost(context);
+	if (!host) {
+		await vscode.commands.executeCommand('workbench.action.openSettings', 'targetExtensions');
+		return;
+	}
+	const file = vscode.Uri.file(join(host.userDataDir, 'User', 'settings.json'));
+	await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(file));
+}
+
 async function restoreAll(controller: Controller): Promise<void> {
 	const choice = await vscode.window.showWarningMessage(
 		'Restore all extensions? This removes every disable entry Target Extensions added, here and globally, and turns it off on this machine until you activate it again.',
@@ -244,6 +258,7 @@ async function menu(): Promise<void> {
 		{ label: '$(tag) Set categories for an extension…', command: 'targetExtensions.setExtensionCategories' },
 		{ label: '$(sync) Apply now', command: 'targetExtensions.apply' },
 		{ label: '$(discard) Restore all extensions', command: 'targetExtensions.restoreAll' },
+		{ label: '$(json) Open config file (settings.json)', command: 'targetExtensions.openConfig' },
 		{ label: '$(settings-gear) Open settings', command: 'workbench.action.openSettings' },
 	];
 	const choice = await vscode.window.showQuickPick(entries, { title: 'Target Extensions' });
@@ -260,5 +275,6 @@ export function registerCommands(context: vscode.ExtensionContext, controller: C
 	register('targetExtensions.editCategories', () => editCategories(controller));
 	register('targetExtensions.apply', () => controller.schedule());
 	register('targetExtensions.restoreAll', () => restoreAll(controller));
+	register('targetExtensions.openConfig', () => openConfigFile(context));
 	register('targetExtensions.setExtensionCategories', (...args) => setExtensionCategories(controller, args[0]));
 }
