@@ -2,6 +2,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import * as vscode from 'vscode';
 import type { InstalledInfo } from '../core/plan';
+import { resolveProfile, type Profile } from '../core/profile';
 
 export interface InstalledExtension extends InstalledInfo {
 	displayName: string;
@@ -21,28 +22,33 @@ interface Manifest {
 	extensionPack?: string[];
 }
 
-const GLOBAL_STORAGE = /^(.*)[\\/]User[\\/](?:profiles[\\/]([^\\/]+)[\\/])?globalStorage[\\/]/;
-
-/** Where this window's profile keeps its data, derived from the extension's own storage location. */
-export interface HostPaths {
-	userDataDir: string;
+/** The shared extensions folder and the profile this window runs in. */
+export interface Host {
 	extensionsDir: string;
-	/** `extensions.json` files to try, current profile first. */
-	extensionsJson: string[];
+	profile: Profile;
 }
 
-export function hostPaths(context: vscode.ExtensionContext): HostPaths | undefined {
-	const match = GLOBAL_STORAGE.exec(context.globalStorageUri.fsPath);
+const USER_DIR = /^(.*)[\\/]User[\\/]globalStorage[\\/]/;
+
+/** The window's workspace as VS Code keys it in `storage.json`: the workspace file, else the single folder. */
+function workspaceUri(): string | undefined {
+	const { workspaceFile, workspaceFolders } = vscode.workspace;
+	if (workspaceFile?.scheme === 'file') {
+		return workspaceFile.toString();
+	}
+	return workspaceFolders?.length === 1 ? workspaceFolders[0]!.uri.toString() : undefined;
+}
+
+export async function resolveHost(context: vscode.ExtensionContext): Promise<Host | undefined> {
+	// The storage folder is shared by all profiles: <userData>/User/globalStorage/<extension id>.
+	const match = USER_DIR.exec(context.globalStorageUri.fsPath);
 	if (!match) {
 		return undefined;
 	}
 	const userDataDir = match[1]!;
 	const extensionsDir = dirname(context.extensionPath);
-	const files = [join(extensionsDir, 'extensions.json')];
-	if (match[2]) {
-		files.unshift(join(userDataDir, 'User', 'profiles', match[2], 'extensions.json'));
-	}
-	return { userDataDir, extensionsDir, extensionsJson: files };
+	const storage = await readFile(join(userDataDir, 'User', 'globalStorage', 'storage.json'), 'utf8').then(text => JSON.parse(text) as unknown, () => undefined);
+	return { extensionsDir, profile: resolveProfile(storage, workspaceUri(), userDataDir, extensionsDir) };
 }
 
 /** Candidate folders for an entry: the recorded absolute location first, then relative to the extensions dir. */
@@ -66,11 +72,11 @@ function toExtension(id: string, manifest: Manifest, isBuiltin: boolean): Instal
  * Every extension installed for this profile. `vscode.extensions.all` only lists the ones running in the
  * window, so disabled ones are read from the profile's `extensions.json` and the built-in extensions folder.
  */
-export async function readInstalled(paths: HostPaths | undefined): Promise<Map<string, InstalledExtension>> {
+export async function readInstalled(host: Host | undefined): Promise<Map<string, InstalledExtension>> {
 	const result = new Map<string, InstalledExtension>();
 
 	let entries: ExtensionsJsonEntry[] | undefined;
-	for (const file of paths?.extensionsJson ?? []) {
+	for (const file of host?.profile.extensionsJson ?? []) {
 		entries = await readFile(file, 'utf8').then(text => JSON.parse(text) as ExtensionsJsonEntry[], () => undefined);
 		if (entries) {
 			break;
@@ -78,10 +84,10 @@ export async function readInstalled(paths: HostPaths | undefined): Promise<Map<s
 	}
 	await Promise.all((entries ?? []).map(async entry => {
 		const id = entry.identifier?.id?.toLowerCase();
-		if (!id || !paths) {
+		if (!id || !host) {
 			return;
 		}
-		for (const folder of locationPaths(entry, paths.extensionsDir)) {
+		for (const folder of locationPaths(entry, host.extensionsDir)) {
 			try {
 				result.set(id, toExtension(id, JSON.parse(await readFile(join(folder, 'package.json'), 'utf8')) as Manifest, false));
 				return;

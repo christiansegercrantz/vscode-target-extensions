@@ -1,12 +1,13 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 
 const DISABLED_KEY = 'extensionsIdentifiers/disabled';
-const MIRROR_FILE = 'owned.json';
+const MIRROR_FILE = /^owned\.[^\\/]+\.json$/;
 
 /**
- * Copy of the ids the tool disabled globally, kept next to the extension's storage. The uninstall hook runs as
- * plain Node without the VS Code API, so it cannot read the extension's state and relies on this file.
+ * Copy of the ids the tool disabled globally in one profile, kept in the extension's storage folder, which all
+ * profiles share, so there is one file per profile. The uninstall hook runs as plain Node without the VS Code
+ * API, so it cannot read the extension's state and relies on these files.
  */
 export interface OwnedMirror {
 	/** The profile's state database that holds VS Code's "Disable" list. */
@@ -14,10 +15,10 @@ export interface OwnedMirror {
 	ids: string[];
 }
 
-export function writeMirror(globalStoragePath: string, ids: string[]): void {
-	const mirror: OwnedMirror = { dbPath: join(dirname(globalStoragePath), 'state.vscdb'), ids };
+export function writeMirror(globalStoragePath: string, profileKey: string, dbPath: string, ids: string[]): void {
+	const mirror: OwnedMirror = { dbPath, ids };
 	mkdirSync(globalStoragePath, { recursive: true });
-	writeFileSync(join(globalStoragePath, MIRROR_FILE), JSON.stringify(mirror));
+	writeFileSync(join(globalStoragePath, `owned.${profileKey}.json`), JSON.stringify(mirror));
 }
 
 interface Statement {
@@ -61,17 +62,11 @@ function removeFromDisabledList(dbPath: string, ids: Set<string>): boolean {
 }
 
 function mirrorFiles(userDataDir: string, extensionId: string): string[] {
-	const files = [join(userDataDir, 'User', 'globalStorage', extensionId, MIRROR_FILE)];
-	const profiles = join(userDataDir, 'User', 'profiles');
-	if (existsSync(profiles)) {
-		for (const profile of readdirSync(profiles)) {
-			files.push(join(profiles, profile, 'globalStorage', extensionId, MIRROR_FILE));
-		}
-	}
-	return files.filter(existsSync);
+	const dir = join(userDataDir, 'User', 'globalStorage', extensionId);
+	return existsSync(dir) ? readdirSync(dir).filter(f => MIRROR_FILE.test(f)).map(f => join(dir, f)) : [];
 }
 
-/** Removes the global "Disable" entries the tool added from every profile found under the given VS Code data folders. */
+/** Removes the global "Disable" entries the tool added, in every profile that has a mirror under the given VS Code data folders. */
 export function cleanupGlobalDisables(userDataDirs: string[], extensionId: string, log: (message: string) => void = () => undefined): number {
 	let cleaned = 0;
 	for (const dir of userDataDirs) {

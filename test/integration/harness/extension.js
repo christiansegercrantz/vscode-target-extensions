@@ -3,7 +3,7 @@
 // Each phase is one launch of the same profile; it records its result in a file and quits gracefully so
 // VS Code flushes its storage, as a reload does.
 const assert = require('node:assert/strict');
-const { writeFileSync } = require('node:fs');
+const { readFileSync, readdirSync, writeFileSync } = require('node:fs');
 const { join } = require('node:path');
 const vscode = require('vscode');
 
@@ -32,6 +32,11 @@ const phases = {
 
 	// A fresh profile gets VS Code's own first-run writes to the same lists; let them settle before the real phases.
 	async phase0() {
+		await sleep(3000);
+	},
+
+	// Creates the named profile and associates the workspace with it.
+	async profile0() {
 		await sleep(3000);
 	},
 
@@ -71,6 +76,32 @@ const phases = {
 		assert.deepEqual(ours(lists.globalDisabled), [], 'restore removes our global entries');
 		assert.deepEqual(lists.workspaceEnabled, [], 'restore removes our workspace entries');
 		assert.equal(controller.isActivated(), false);
+	},
+
+	// Runs in a non-default profile. The extensions offered must come from that profile's own list, and the
+	// uninstall mirror must point at its own state database.
+	async profile({ controller }) {
+		const state = await controller.gather();
+		assert.ok(!vscode.extensions.getExtension('fake.profileonly'), 'precondition: the extension is not running, so only the file can reveal it');
+		assert.ok(state.installed.has('fake.profileonly'), "the profile's own extension list is read");
+		assert.ok(state.installed.has('vscode.markdown-language-features'), 'built-in extensions are still offered');
+		await setConfig([]);
+		await controller.setActivated(true);
+		await controller.schedule();
+		const dir = join(process.env.TE_USER_DATA, 'User', 'globalStorage', SELF);
+		const files = readdirSync(dir).filter(f => /^owned\..+\.json$/.test(f) && f !== 'owned.default.json');
+		assert.equal(files.length, 1, `a mirror keyed by this profile next to the Default one, found ${files}`);
+		const mirror = JSON.parse(readFileSync(join(dir, files[0]), 'utf8'));
+		assert.ok(mirror.dbPath.includes(`${join('User', 'profiles')}`), `mirror points at the profile database: ${mirror.dbPath}`);
+		assert.ok(mirror.ids.length > 0, 'the mirror lists what was disabled');
+		const defaultMirror = JSON.parse(readFileSync(join(dir, 'owned.default.json'), 'utf8'));
+		assert.ok(!defaultMirror.dbPath.includes(`${join('User', 'profiles')}`), 'the Default mirror still points at the Default database');
+	},
+
+	// Default profile counterpart of the check above.
+	async defaultProfile({ controller }) {
+		const state = await controller.gather();
+		assert.ok(state.installed.has('fake.defaultonly'), 'the Default profile offers its own extension');
 	},
 
 	async phase4() {

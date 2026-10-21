@@ -36,7 +36,7 @@ Use the commands (status bar item, or the Command Palette under *Target Extensio
 
 ## Caveats
 
-VS Code has no API for one extension to disable another. This extension writes VS Code's own enablement lists through an internal storage channel, so a VS Code update can break it (it then says so and does nothing). See `docs/adr/0001-global-disable-workspace-enable-via-internal-storage.md`. Remote windows (SSH, WSL, Dev Containers) are best-effort and untested.
+VS Code has no API for one extension to disable another. This extension writes VS Code's own enablement lists through an internal storage channel, so a VS Code update can break it (it then says so and does nothing). See `docs/adr/0001-global-disable-workspace-enable-via-internal-storage.md`. Installed extensions are listed per profile: the window's profile comes from VS Code's `storage.json` (an extension cannot ask for it), and a window with no recorded profile, such as an empty window, is treated as the Default profile. Remote windows (SSH, WSL, Dev Containers) are best-effort and untested.
 
 Uninstalling runs a best-effort cleanup of the global disable entries; **Restore All Extensions** does it explicitly and also switches activation off.
 

@@ -1,10 +1,12 @@
+import { rmSync } from 'node:fs';
+import { join } from 'node:path';
 import * as vscode from 'vscode';
 import { findTarget, referencesSelf, type Config } from '../core/config';
 import { writeMirror } from '../core/ownedMirror';
 import { planTarget, type Plan } from '../core/plan';
 import { pendingChanges, reconcile, type EnablementLists, type EnablementStore, type Ownership } from '../core/reconcile';
 import type { Target } from '../core/target';
-import { hostPaths, readInstalled, type InstalledExtension } from './inventory';
+import { readInstalled, resolveHost, type Host, type InstalledExtension } from './inventory';
 import { readConfig, removeIds, saveTarget } from './settings';
 import { currentTarget } from './target';
 
@@ -28,6 +30,7 @@ export class Controller implements vscode.Disposable {
 	private target: Promise<Target | undefined> | undefined;
 	private readonly notified = new Set<string>();
 	private promptedSetup = false;
+	private host: Host | undefined;
 	private readonly status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
 	private readonly log = vscode.window.createOutputChannel('Target Extensions');
 
@@ -68,7 +71,9 @@ export class Controller implements vscode.Disposable {
 
 	async gather(): Promise<State> {
 		this.target ??= currentTarget();
-		const [target, installed] = await Promise.all([this.target, readInstalled(hostPaths(this.context))]);
+		const host = await resolveHost(this.context);
+		this.host = host;
+		const [target, installed] = await Promise.all([this.target, readInstalled(host)]);
 		const config = readConfig();
 		return { config, target, installed, plan: planTarget(config, target?.key, installed, this.selfId), activated: this.isActivated() };
 	}
@@ -87,7 +92,12 @@ export class Controller implements vscode.Disposable {
 		await this.context.workspaceState.update(OWNED_WS_ENABLED, owned.workspaceEnabled);
 		await this.context.workspaceState.update(OWNED_WS_DISABLED, owned.workspaceDisabled);
 		try {
-			writeMirror(this.context.globalStorageUri.fsPath, owned.globalDisabled);
+			if (this.host) {
+				const dir = this.context.globalStorageUri.fsPath;
+				writeMirror(dir, this.host.profile.key, this.host.profile.stateDb, owned.globalDisabled);
+				// Replaced by one file per profile; the old one pointed at the wrong profile.
+				rmSync(join(dir, 'owned.json'), { force: true });
+			}
 		} catch (error) {
 			this.log.appendLine(`Could not write the uninstall mirror: ${String(error)}`);
 		}
