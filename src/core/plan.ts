@@ -4,6 +4,7 @@ export interface InstalledInfo {
 	id: string;
 	/** `extensionDependencies` and `extensionPack` members, lower-cased. */
 	dependencies: string[];
+	activationEvents?: string[];
 }
 
 export interface DependencyNote {
@@ -13,6 +14,8 @@ export interface DependencyNote {
 
 export interface Plan {
 	managed: Set<string>;
+	/** Remote resolvers and their dependencies must be available before a Target can open. */
+	protected: Set<string>;
 	configured: boolean;
 	/** Managed extensions to enable in this Target, including their dependencies. */
 	enable: Set<string>;
@@ -32,8 +35,18 @@ export interface Plan {
 export function planTarget(config: Config, targetKeys: string | readonly string[] | undefined, installed: ReadonlyMap<string, InstalledInfo>, selfId: string): Plan {
 	const self = selfId.toLowerCase();
 	const managed = managedExtensions(config, self);
+	const protectedIds = new Set<string>();
+	const connections = [...installed.values()].filter(ext => ext.activationEvents?.some(event => event.startsWith('onResolveRemoteAuthority:'))).map(ext => ext.id);
+	for (let id = connections.shift(); id !== undefined; id = connections.shift()) {
+		if (protectedIds.has(id)) {
+			continue;
+		}
+		protectedIds.add(id);
+		managed.delete(id);
+		connections.push(...(installed.get(id)?.dependencies ?? []));
+	}
 	const entry = targetKeys ? findTarget(config, targetKeys)?.config : undefined;
-	const plan: Plan = { managed, configured: !!entry, enable: new Set(), direct: new Set(), disable: new Set(), addedDependencies: [], missing: [] };
+	const plan: Plan = { managed, protected: protectedIds, configured: !!entry, enable: new Set(), direct: new Set(), disable: new Set(), addedDependencies: [], missing: [] };
 	if (!entry) {
 		return plan;
 	}
@@ -60,7 +73,7 @@ export function planTarget(config: Config, targetKeys: string | readonly string[
 	for (const id of entry.disable) {
 		referenced.add(id);
 		plan.enable.delete(id);
-		if (!managed.has(id) && id !== self) {
+		if (!managed.has(id) && id !== self && !protectedIds.has(id)) {
 			plan.disable.add(id);
 		}
 	}

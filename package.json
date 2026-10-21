@@ -69,7 +69,7 @@
           "type": "object",
           "scope": "application",
           "default": {},
-          "markdownDescription": "Named sets of extensions, e.g. `{ \"python\": [\"ms-python.python\"] }`. An extension in any category is *managed*: off by default, on only in Targets that apply one of its categories. Stored in the Default profile's `settings.json` and shared by every profile; **Target Extensions: Open Config File** opens it.",
+          "markdownDescription": "Named sets of extensions, e.g. `{ \"python\": [\"ms-python.python\"] }`. An extension in any category is *managed*: off by default, on only in Targets that apply one of its categories. Remote connection resolvers (SSH, WSL, Dev Containers, etc.) and their dependencies are exempt so connections can start. Stored in the Default profile's `settings.json` and shared by every profile; **Target Extensions: Open Config File** opens it.",
           "additionalProperties": {
             "type": "array",
             "items": {

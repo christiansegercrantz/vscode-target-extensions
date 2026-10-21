@@ -20,6 +20,7 @@ interface Manifest {
 	name?: string;
 	extensionDependencies?: string[];
 	extensionPack?: string[];
+	activationEvents?: string[];
 }
 
 /** The shared extensions folder and the profile this window runs in. */
@@ -66,6 +67,7 @@ function toExtension(id: string, manifest: Manifest, isBuiltin: boolean): Instal
 		displayName: display,
 		isBuiltin,
 		dependencies: [...(manifest.extensionDependencies ?? []), ...(manifest.extensionPack ?? [])].map(d => d.toLowerCase()),
+		activationEvents: manifest.activationEvents ?? [],
 	};
 }
 

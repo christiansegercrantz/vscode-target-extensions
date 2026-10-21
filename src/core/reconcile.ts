@@ -41,7 +41,9 @@ export interface ReconcileInput {
 	/** Managed extensions; the ones installed here get disabled globally. */
 	managed: ReadonlySet<string>;
 	installed: ReadonlySet<string>;
-	/** The Target's wishes. Leave out to leave this workspace's lists alone. */
+	/** Connection extensions whose tool-owned disables must be removed even without a configured Target. */
+	protected?: ReadonlySet<string>;
+	/** The Target's wishes. Leave out to leave workspace lists alone, except protected disable repairs. */
 	workspace?: { enable: ReadonlySet<string>; disable: ReadonlySet<string> };
 }
 
@@ -58,7 +60,7 @@ export async function reconcile(input: ReconcileInput): Promise<ReconcileResult>
 	const owned = { ...input.owned };
 	let wroteGlobal = false;
 
-	const global = nextList(raw.globalDisabled, owned.globalDisabled, [...input.managed].filter(id => installed.has(id)));
+	const global = nextList(raw.globalDisabled, owned.globalDisabled, [...input.managed].filter(id => installed.has(id) && !input.protected?.has(id)));
 	if (global.changed) {
 		await store.writeGlobalDisabled(global.list);
 		raw.globalDisabled = global.list;
@@ -67,14 +69,19 @@ export async function reconcile(input: ReconcileInput): Promise<ReconcileResult>
 	owned.globalDisabled = global.owned;
 
 	if (input.workspace) {
-		const enabled = nextList(raw.workspaceEnabled, owned.workspaceEnabled, [...input.workspace.enable].filter(id => installed.has(id)));
+		const enabled = nextList(raw.workspaceEnabled, owned.workspaceEnabled, [...input.workspace.enable].filter(id => installed.has(id) && !input.protected?.has(id)));
 		if (enabled.changed) {
 			await store.writeWorkspaceEnabled(enabled.list);
 			raw.workspaceEnabled = enabled.list;
 		}
 		owned.workspaceEnabled = enabled.owned;
+	}
 
-		const disabled = nextList(raw.workspaceDisabled, owned.workspaceDisabled, [...input.workspace.disable].filter(id => installed.has(id)));
+	if (input.workspace || input.protected?.size) {
+		const wanted = input.workspace
+			? [...input.workspace.disable].filter(id => installed.has(id))
+			: raw.workspaceDisabled.map(e => e.id.toLowerCase()).filter(id => owned.workspaceDisabled.includes(id));
+		const disabled = nextList(raw.workspaceDisabled, owned.workspaceDisabled, wanted.filter(id => !input.protected?.has(id)));
 		if (disabled.changed) {
 			await store.writeWorkspaceDisabled(disabled.list);
 			raw.workspaceDisabled = disabled.list;

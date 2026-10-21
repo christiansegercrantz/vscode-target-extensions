@@ -106,6 +106,25 @@ describe('planTarget', () => {
 		expect(plan.disable.size).toBe(0);
 		expect(plan.missing).toEqual([]);
 	});
+
+	it.each(['ssh', 'wsl', 'dev-container'])('protects the %s resolver and transitive dependencies, but not ordinary UI extensions', authority => {
+		const remote = new Map([
+			['remote.resolver', { id: 'remote.resolver', dependencies: ['remote.helper'], activationEvents: [`onResolveRemoteAuthority:${authority}`] }],
+			['remote.helper', { id: 'remote.helper', dependencies: ['remote.transitive'], activationEvents: [] }],
+			['remote.transitive', { id: 'remote.transitive', dependencies: ['remote.resolver'], activationEvents: [] }],
+			['ui.tool', { id: 'ui.tool', dependencies: [], activationEvents: ['onCommand:connect'] }],
+		]);
+		const ids = [...remote.keys()];
+		const c = parseConfig({ remote: ids }, { 'folder:~/x': { categories: ['*'], disable: ids } });
+		const plan = planTarget(c, 'folder:~/x', remote, SELF);
+		expect(plan.protected).toEqual(new Set(['remote.resolver', 'remote.helper', 'remote.transitive']));
+		expect(plan.managed).toEqual(new Set(['ui.tool']));
+		expect(plan.disable.size).toBe(0);
+		expect(plan.enable.size).toBe(0);
+		expect(plan.direct.size).toBe(0);
+		expect(plan.missing).toEqual([]);
+		expect(c.categories.remote).toEqual(ids);
+	});
 });
 
 describe('category membership', () => {

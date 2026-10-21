@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { nextList } from '../src/core/lists';
+import { parseConfig } from '../src/core/config';
+import { planTarget } from '../src/core/plan';
 import { emptyOwnership, pendingChanges, reconcile, toLists, type EnablementStore, type RawLists } from '../src/core/reconcile';
 
 class MemoryStore implements EnablementStore {
@@ -93,6 +95,72 @@ describe('reconcile', () => {
 		const first = await reconcile({ store, owned: emptyOwnership(), managed, installed, workspace: { enable: new Set(['py.python']), disable: new Set(['other.tool']) } });
 		await reconcile({ store, owned: first.owned, managed: new Set(), installed, workspace: { enable: new Set(), disable: new Set() } });
 		expect(store.lists).toEqual({ globalDisabled: [], workspaceDisabled: [], workspaceEnabled: [] });
+	});
+
+	it.each([undefined, 'folder:~/configured', 'folder:~/new'])('keeps SSH available before connecting from %s', async target => {
+		const ssh = 'ms-vscode-remote.remote-ssh';
+		const helper = 'remote.helper';
+		const installed = new Map([
+			[ssh, { id: ssh, dependencies: [helper], activationEvents: ['onResolveRemoteAuthority:ssh'] }],
+			[helper, { id: helper, dependencies: [], activationEvents: [] }],
+			['py.python', { id: 'py.python', dependencies: [], activationEvents: [] }],
+		]);
+		const config = parseConfig({ remote: [ssh, helper], python: ['py.python'] }, {
+			'folder:~/configured': { categories: [], disable: [ssh, helper] },
+		});
+		const plan = planTarget(config, target, installed, 'me.target-extensions');
+		const store = new MemoryStore({
+			globalDisabled: [{ id: ssh }, { id: helper }, { id: 'user.disabled' }],
+			workspaceDisabled: [{ id: ssh }, { id: helper }, { id: 'user.disabled' }],
+			workspaceEnabled: [],
+		});
+		const result = await reconcile({
+			store,
+			owned: { globalDisabled: [ssh, helper], workspaceDisabled: [ssh, helper], workspaceEnabled: [] },
+			managed: plan.managed,
+			installed: new Set(installed.keys()),
+			protected: plan.protected,
+			workspace: plan.configured ? { enable: plan.enable, disable: plan.disable } : undefined,
+		});
+		expect(ids(store.lists.globalDisabled).sort()).toEqual(['py.python', 'user.disabled']);
+		expect(ids(store.lists.workspaceDisabled)).toEqual(['user.disabled']);
+		expect(result.owned.globalDisabled).toEqual(['py.python']);
+		expect(result.owned.workspaceDisabled).toEqual([]);
+		expect(pendingChanges(toLists(store.lists), new Set(), [ssh, helper]).enabled).toEqual([ssh, helper].sort());
+		const writes = store.writes;
+		await reconcile({
+			store, owned: result.owned, managed: plan.managed, installed: new Set(installed.keys()), protected: plan.protected,
+			workspace: plan.configured ? { enable: plan.enable, disable: plan.disable } : undefined,
+		});
+		expect(store.writes).toBe(writes);
+	});
+
+	it('repairs connection disables without changing unrelated workspace wishes in an unconfigured window', async () => {
+		const store = new MemoryStore({
+			globalDisabled: [],
+			workspaceDisabled: [{ id: 'remote.resolver' }, { id: 'other.tool' }, { id: 'user.disabled' }],
+			workspaceEnabled: [{ id: 'py.python' }],
+		});
+		const result = await reconcile({
+			store,
+			owned: { globalDisabled: [], workspaceDisabled: ['remote.resolver', 'other.tool', 'user.removed'], workspaceEnabled: ['py.python'] },
+			managed: new Set(), installed, protected: new Set(['remote.resolver']),
+		});
+		expect(ids(store.lists.workspaceDisabled)).toEqual(['user.disabled', 'other.tool']);
+		expect(ids(store.lists.workspaceEnabled)).toEqual(['py.python']);
+		expect(result.owned.workspaceDisabled).toEqual(['other.tool']);
+		expect(result.owned.workspaceEnabled).toEqual(['py.python']);
+	});
+
+	it('preserves manual disables of remote connection extensions', async () => {
+		const ssh = 'ms-vscode-remote.remote-ssh';
+		const store = new MemoryStore({ globalDisabled: [{ id: ssh }], workspaceDisabled: [{ id: ssh }], workspaceEnabled: [] });
+		await reconcile({
+			store, owned: emptyOwnership(), managed: new Set(), installed: new Set([ssh]), protected: new Set([ssh]),
+			workspace: { enable: new Set(), disable: new Set() },
+		});
+		expect(ids(store.lists.globalDisabled)).toEqual([ssh]);
+		expect(ids(store.lists.workspaceDisabled)).toEqual([ssh]);
 	});
 });
 

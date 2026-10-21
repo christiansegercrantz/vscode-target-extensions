@@ -121,13 +121,14 @@ export class Controller implements vscode.Disposable {
 			owned: this.readOwned(),
 			managed: plan.managed,
 			installed: new Set(installed.keys()),
+			protected: plan.protected,
 			workspace: target && plan.configured ? { enable: plan.enable, disable: plan.disable } : undefined,
 		});
 		await this.saveOwned(result.owned);
 		if (target && !plan.configured) {
 			this.promptSetup(state);
 		}
-		this.promptReload(result.lists, state, new Set([...plan.managed, ...plan.disable, ...result.owned.workspaceDisabled]));
+		this.promptReload(result.lists, state, new Set([...plan.managed, ...plan.disable, ...result.owned.workspaceDisabled, ...[...plan.protected].filter(id => installed.has(id))]));
 	}
 
 	/** Undoes everything the tool wrote for this machine and this workspace, and switches Activation off. */

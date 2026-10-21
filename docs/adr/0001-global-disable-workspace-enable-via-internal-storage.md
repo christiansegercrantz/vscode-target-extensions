@@ -15,4 +15,5 @@ VS Code exposes no public API or command to disable another extension (microsoft
 - The tool records which global disable entries it added and only ever removes those (Restore all, removal from every Category, best-effort `vscode:uninstall` cleanup).
 - Nothing is written globally before Activation on a machine, so installing the tool or receiving Categories via Settings Sync never disables anything by surprise.
 - The tool never disables itself.
+- Remote authority resolvers (identified by `onResolveRemoteAuthority:*` activation events) and their dependency/extension-pack closure are excluded from management: a workspace enable cannot bootstrap the connection needed to open that workspace. Only tool-owned disable entries are removed, including workspace disables in windows without configured rules.
 - Workspace storage is per opened folder, so each newly opened subfolder of an already-configured Repository needs one reload.

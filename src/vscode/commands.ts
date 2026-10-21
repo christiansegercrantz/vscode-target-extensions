@@ -75,7 +75,7 @@ async function overrideExtensions(controller: Controller): Promise<void> {
 	const derivedOn = (id: string) => !derived.managed.has(id) || derived.direct.has(id);
 	const effectiveOn = (id: string) => (plan.managed.has(id) ? plan.enable.has(id) : !plan.disable.has(id));
 
-	const universe = pickable(state, controller.selfId);
+	const universe = pickable(state, controller.selfId).filter(e => !plan.protected.has(e.id));
 	const picked = await vscode.window.showQuickPick(
 		universe
 			.map(e => ({

@@ -8,6 +8,7 @@ Keep chosen VS Code extensions **off everywhere except in the workspaces, reposi
 - A window's **Target** is the first of: the saved `.code-workspace` file, the git repository (identified by its `origin` URL, so re-clones and subfolders match), or the folder.
 - A Target applies categories and can **override** single extensions (on or off). Rules saved under an earlier key still apply when a repository gains a remote or a folder becomes a repository, and move to the current key the next time they are saved.
 - Extensions in no category are never touched. This extension never manages itself.
+- Remote connection resolvers (SSH, WSL, Dev Containers, etc.) and their dependencies are never automatically disabled, even if they belong to a category or a Target disables them. They must be available before connecting to a remote Target. Earlier disable entries written by this tool are removed on the next evaluation; accept **Reload Window** to apply the repair. Manual disables are preserved.
 - Dependencies of an enabled extension are enabled with it.
 
 Nothing is disabled until you **activate** it on a machine, by answering the first prompt. After that, opening an unconfigured Target asks which categories to use. Changes apply after **Reload Window**; the extension asks but never reloads on its own.
