@@ -2,7 +2,7 @@
   "name": "target-extensions",
   "displayName": "Target Extensions",
   "description": "Keep chosen extensions off everywhere except in the workspaces, repositories and folders where you want them.",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "publisher": "csegercrantz",
   "license": "AGPL-3.0-or-later",
   "private": true,
