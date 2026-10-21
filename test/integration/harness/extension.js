@@ -23,6 +23,13 @@ async function setConfig(targetCategories) {
 }
 
 const phases = {
+	// Not an assertion: writes what the pickers would offer, for comparing with a real profile.
+	async dump({ controller }) {
+		const state = await controller.gather();
+		const all = [...state.installed.values()].map(e => ({ id: e.id, builtin: e.isBuiltin }));
+		writeFileSync(join(process.env.TE_RESULT_DIR, 'inventory.json'), JSON.stringify(all));
+	},
+
 	// A fresh profile gets VS Code's own first-run writes to the same lists; let them settle before the real phases.
 	async phase0() {
 		await sleep(3000);

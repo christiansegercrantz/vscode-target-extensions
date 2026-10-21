@@ -45,12 +45,11 @@ export function hostPaths(context: vscode.ExtensionContext): HostPaths | undefin
 	return { userDataDir, extensionsDir, extensionsJson: files };
 }
 
-function locationPath(entry: ExtensionsJsonEntry, extensionsDir: string): string | undefined {
-	if (entry.relativeLocation) {
-		return join(extensionsDir, entry.relativeLocation);
-	}
+/** Candidate folders for an entry: the recorded absolute location first, then relative to the extensions dir. */
+function locationPaths(entry: ExtensionsJsonEntry, extensionsDir: string): string[] {
 	const raw = typeof entry.location === 'string' ? entry.location : entry.location?.fsPath ?? entry.location?.path;
-	return raw?.replace(/^\/([A-Za-z]:)/, '$1');
+	const candidates = [raw?.replace(/^\/([A-Za-z]:)/, '$1'), entry.relativeLocation && join(extensionsDir, entry.relativeLocation)];
+	return candidates.filter((p): p is string => !!p);
 }
 
 function toExtension(id: string, manifest: Manifest, isBuiltin: boolean): InstalledExtension {
@@ -79,14 +78,16 @@ export async function readInstalled(paths: HostPaths | undefined): Promise<Map<s
 	}
 	await Promise.all((entries ?? []).map(async entry => {
 		const id = entry.identifier?.id?.toLowerCase();
-		const folder = paths && locationPath(entry, paths.extensionsDir);
-		if (!id || !folder) {
+		if (!id || !paths) {
 			return;
 		}
-		try {
-			result.set(id, toExtension(id, JSON.parse(await readFile(join(folder, 'package.json'), 'utf8')) as Manifest, false));
-		} catch {
-			// The extension folder is gone or unreadable; skip it.
+		for (const folder of locationPaths(entry, paths.extensionsDir)) {
+			try {
+				result.set(id, toExtension(id, JSON.parse(await readFile(join(folder, 'package.json'), 'utf8')) as Manifest, false));
+				return;
+			} catch {
+				// Not at this location; try the next, and skip the entry if the folder is gone.
+			}
 		}
 	}));
 
