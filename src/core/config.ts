@@ -69,6 +69,26 @@ export function managedExtensions(config: Config, selfId: string): Set<string> {
 	return managed;
 }
 
+/** Names of the categories an extension belongs to. */
+export function categoriesOf(config: Config, id: string): string[] {
+	const lower = id.toLowerCase();
+	return Object.keys(config.categories).filter(name => config.categories[name]!.includes(lower));
+}
+
+/** Categories after putting an extension in exactly the named ones; categories it is not named in lose it. New names are created. */
+export function setMembership(categories: Config['categories'], id: string, names: readonly string[]): Config['categories'] {
+	const lower = id.toLowerCase();
+	const next: Config['categories'] = {};
+	for (const [name, members] of Object.entries(categories)) {
+		const without = members.filter(m => m !== lower);
+		next[name] = names.includes(name) ? [...without, lower] : without;
+	}
+	for (const name of names) {
+		next[name] ??= [lower];
+	}
+	return next;
+}
+
 /** Whether this extension's own id appears anywhere in the config. */
 export function referencesSelf(config: Config, selfId: string): boolean {
 	const self = selfId.toLowerCase();

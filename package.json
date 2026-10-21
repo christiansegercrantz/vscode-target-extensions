@@ -2,8 +2,9 @@
   "name": "target-extensions",
   "displayName": "Target Extensions",
   "description": "Keep chosen extensions off everywhere except in the workspaces, repositories and folders where you want them.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "csegercrantz",
+  "license": "AGPL-3.0-or-later",
   "private": true,
   "engines": {
     "vscode": "^1.90.0"
@@ -38,6 +39,11 @@
       {
         "command": "targetExtensions.editCategories",
         "title": "Edit Categories…",
+        "category": "Target Extensions"
+      },
+      {
+        "command": "targetExtensions.setExtensionCategories",
+        "title": "Set Categories…",
         "category": "Target Extensions"
       },
       {
@@ -97,6 +103,15 @@
           }
         }
       }
+    },
+    "menus": {
+      "extension/context": [
+        {
+          "command": "targetExtensions.setExtensionCategories",
+          "group": "targetExtensions@1",
+          "when": "!isBuiltinExtension && extensionStatus == installed && extension != csegercrantz.target-extensions"
+        }
+      ]
     }
   },
   "devDependencies": {

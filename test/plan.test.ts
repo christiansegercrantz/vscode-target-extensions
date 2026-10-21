@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findTarget, managedExtensions, parseConfig, referencesSelf, serializeTarget } from '../src/core/config';
+import { categoriesOf, findTarget, managedExtensions, parseConfig, referencesSelf, serializeTarget, setMembership } from '../src/core/config';
 import { planTarget, type InstalledInfo } from '../src/core/plan';
 
 const SELF = 'me.target-extensions';
@@ -104,5 +104,27 @@ describe('planTarget', () => {
 		expect([...plan.enable]).toEqual(['x.y']);
 		expect(plan.disable.size).toBe(0);
 		expect(plan.missing).toEqual([]);
+	});
+});
+
+describe('category membership', () => {
+	it('lists the categories an extension is in, ignoring case', () => {
+		expect(categoriesOf(config, 'MS-Python.Python')).toEqual(['python']);
+		expect(categoriesOf(config, 'nobody.here')).toEqual([]);
+	});
+
+	it('puts an extension in exactly the named categories, creating new ones', () => {
+		const next = setMembership({ a: ['x.y', 'p.q'], b: ['p.q'], c: [] }, 'P.Q', ['b', 'c', 'fresh']);
+		expect(next).toEqual({ a: ['x.y'], b: ['p.q'], c: ['p.q'], fresh: ['p.q'] });
+	});
+
+	it('does not duplicate a member and leaves other extensions in order', () => {
+		expect(setMembership({ a: ['p.q', 'x.y'] }, 'p.q', ['a'])).toEqual({ a: ['x.y', 'p.q'] });
+	});
+
+	it('can empty every category, which makes the extension unmanaged', () => {
+		const next = setMembership({ a: ['p.q'], b: ['p.q'] }, 'p.q', []);
+		expect(next).toEqual({ a: [], b: [] });
+		expect(managedExtensions(parseConfig(next, {}), SELF).has('p.q')).toBe(false);
 	});
 });

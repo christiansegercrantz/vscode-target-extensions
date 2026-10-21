@@ -32,7 +32,7 @@ Empty windows and unsaved multi-root workspaces have no Target, so managed exten
 }
 ```
 
-Use the commands (status bar item, or the Command Palette under *Target Extensions*) to edit these with pickers.
+Use the commands (status bar item, or the Command Palette under *Target Extensions*) to edit these with pickers. To put one extension into categories, right-click it in the Extensions view and choose **Set Categories…**: tick the categories it belongs to, or add a new one. Unticking all of them stops managing it.
 
 ## Caveats
 

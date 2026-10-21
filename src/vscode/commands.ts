@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { ALL_CATEGORY, findTarget, type Config, type TargetConfig } from '../core/config';
+import { ALL_CATEGORY, categoriesOf, findTarget, setMembership, type Config, type TargetConfig } from '../core/config';
 import { planTarget } from '../core/plan';
 import type { Controller, State } from './controller';
 import { saveCategories, saveTarget } from './settings';
@@ -159,6 +159,72 @@ async function editCategories(controller: Controller): Promise<void> {
 	await controller.schedule();
 }
 
+/** The extension id from an `extension/context` menu click, which passes `(id, { id, version, ... })`. */
+function idFromMenuArg(arg: unknown): string | undefined {
+	const id = typeof arg === 'string' ? arg : (arg as { id?: unknown } | undefined)?.id;
+	return typeof id === 'string' ? id.toLowerCase() : undefined;
+}
+
+async function setExtensionCategories(controller: Controller, arg: unknown): Promise<void> {
+	const state = await controller.gather();
+	let id = idFromMenuArg(arg);
+	if (!id) {
+		const picked = await vscode.window.showQuickPick(
+			pickable(state, controller.selfId).map(e => ({ label: e.displayName, description: e.id, id: e.id })).sort(byName),
+			{ matchOnDescription: true, title: 'Set categories for which extension?' },
+		);
+		id = picked?.id;
+	}
+	if (!id) {
+		return;
+	}
+	if (id === controller.selfId) {
+		void vscode.window.showInformationMessage('Target Extensions never manages itself.');
+		return;
+	}
+
+	const { config } = state;
+	const name = state.installed.get(id)?.displayName ?? id;
+	const NEW = '$(add) New category…';
+	const current = new Set(categoriesOf(config, id));
+	const picked = await vscode.window.showQuickPick(
+		[
+			...Object.keys(config.categories).sort().map(c => ({ label: c, description: `${config.categories[c]!.length} extension(s)`, picked: current.has(c) })),
+			{ label: NEW, description: '' },
+		],
+		{
+			canPickMany: true,
+			title: `Categories for ${name}`,
+			placeHolder: current.size ? 'Uncheck all to stop managing it' : 'Check categories to manage it: it is then off except where they are chosen',
+		},
+	);
+	if (!picked) {
+		return;
+	}
+	const names = picked.filter(p => p.label !== NEW).map(p => p.label);
+	if (picked.some(p => p.label === NEW)) {
+		const typed = await vscode.window.showInputBox({
+			title: 'New category',
+			prompt: 'Name, e.g. python or node',
+			validateInput: value => {
+				const v = value.trim();
+				return !v || v === ALL_CATEGORY ? 'Enter a name' : config.categories[v] ? 'That category already exists; check it in the list instead' : undefined;
+			},
+		});
+		if (!typed) {
+			return;
+		}
+		names.push(typed.trim());
+	}
+	await saveCategories(setMembership(config.categories, id, names));
+	void vscode.window.showInformationMessage(
+		names.length
+			? `${name} is managed: off everywhere except Targets that use ${names.map(n => `"${n}"`).join(' or ')}.`
+			: `${name} is no longer managed and will be turned back on.`,
+	);
+	await controller.schedule();
+}
+
 async function restoreAll(controller: Controller): Promise<void> {
 	const choice = await vscode.window.showWarningMessage(
 		'Restore all extensions? This removes every disable entry Target Extensions added, here and globally, and turns it off on this machine until you activate it again.',
@@ -175,6 +241,7 @@ async function menu(): Promise<void> {
 		{ label: '$(checklist) Choose categories for this Target…', command: 'targetExtensions.chooseCategories' },
 		{ label: '$(list-selection) Override extensions for this Target…', command: 'targetExtensions.overrideExtensions' },
 		{ label: '$(symbol-namespace) Edit categories…', command: 'targetExtensions.editCategories' },
+		{ label: '$(tag) Set categories for an extension…', command: 'targetExtensions.setExtensionCategories' },
 		{ label: '$(sync) Apply now', command: 'targetExtensions.apply' },
 		{ label: '$(discard) Restore all extensions', command: 'targetExtensions.restoreAll' },
 		{ label: '$(settings-gear) Open settings', command: 'workbench.action.openSettings' },
@@ -186,11 +253,12 @@ async function menu(): Promise<void> {
 }
 
 export function registerCommands(context: vscode.ExtensionContext, controller: Controller): void {
-	const register = (id: string, fn: () => Promise<unknown>) => context.subscriptions.push(vscode.commands.registerCommand(id, fn));
+	const register = (id: string, fn: (...args: unknown[]) => Promise<unknown>) => context.subscriptions.push(vscode.commands.registerCommand(id, fn));
 	register('targetExtensions.menu', menu);
 	register('targetExtensions.chooseCategories', () => chooseCategories(controller));
 	register('targetExtensions.overrideExtensions', () => overrideExtensions(controller));
 	register('targetExtensions.editCategories', () => editCategories(controller));
 	register('targetExtensions.apply', () => controller.schedule());
 	register('targetExtensions.restoreAll', () => restoreAll(controller));
+	register('targetExtensions.setExtensionCategories', (...args) => setExtensionCategories(controller, args[0]));
 }
