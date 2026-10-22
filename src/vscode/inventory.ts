@@ -38,7 +38,7 @@ const USER_DIR = /^(.*)[\\/]User[\\/]globalStorage[\\/]/;
 /** The window's workspace as VS Code keys it in `storage.json`: the workspace file, else the single folder. */
 function workspaceUri(): string | undefined {
 	const { workspaceFile, workspaceFolders } = vscode.workspace;
-	if (workspaceFile?.scheme === 'file') {
+	if (workspaceFile && workspaceFile.scheme !== 'untitled') {
 		return workspaceFile.toString();
 	}
 	return workspaceFolders?.length === 1 ? workspaceFolders[0]!.uri.toString() : undefined;
