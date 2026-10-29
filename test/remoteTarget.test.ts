@@ -33,8 +33,14 @@ it('gives an SSH window the same repo Target as a local clone of the repository'
 
 	const target = await currentTarget();
 
-	expect(target?.key).toBe('repo:github.com/acme/securo');
-	expect(target?.aliases).toEqual(['repo:ssh-remote+securo/home/bazzite/securo', 'folder:ssh-remote+securo/home/bazzite/securo/src']);
+	expect(target?.key).toBe('repo:github.com/acme/securo#src');
+	expect(target?.aliases).toEqual(['repo:ssh-remote+securo/home/bazzite/securo#src', 'folder:ssh-remote+securo/home/bazzite/securo/src']);
+	expect(target?.parents.map(p => p.key)).toEqual([
+		'repo:github.com/acme/securo',
+		'folder:ssh-remote+securo/home/bazzite',
+		'folder:ssh-remote+securo/home',
+		'folder:ssh-remote+securo',
+	]);
 });
 
 it('reads a linked worktree through its .git file and commondir', async () => {
@@ -44,7 +50,7 @@ it('reads a linked worktree through its .git file and commondir', async () => {
 		'/w/main/.git/config': '[remote "upstream"]\n\turl = https://x/y\n[remote "origin"]\n\turl = https://github.com/acme/api\n',
 	}));
 
-	expect(info).toEqual({ root: '/w/feature', originUrl: 'https://github.com/acme/api' });
+	expect(info).toEqual({ root: '/w/feature', originUrl: 'https://github.com/acme/api', prefix: '' });
 });
 
 it('finds no repository outside git', async () => {

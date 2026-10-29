@@ -56,7 +56,7 @@ function launch(phase) {
 }
 
 let failed = false;
-for (const phase of (process.env.TE_PHASES ?? 'defaultProfile,phase0,phase1,phase2,phase3,phase4,alias,profile0,profile').split(',')) {
+for (const phase of (process.env.TE_PHASES ?? 'defaultProfile,phase0,phase1,phase2,phase3,phase4,alias,inherit,profile0,profile').split(',')) {
 	process.stdout.write(`${phase} ... `);
 	await launch(phase);
 	if (phase === 'profile0') {

@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import type { EnablementStore } from './core/reconcile';
 import { registerCommands } from './vscode/commands';
 import { Controller } from './vscode/controller';
-import { readConfig, saveTarget } from './vscode/settings';
+import { deleteTarget, readConfig, saveTarget } from './vscode/settings';
 import { openEnablementStore } from './vscode/storageChannel';
 
 const DEBOUNCE_MS = 400;
@@ -11,7 +11,7 @@ const DEBOUNCE_MS = 400;
 export interface TestApi {
 	controller: Controller;
 	store: EnablementStore;
-	settings: { readConfig: typeof readConfig; saveTarget: typeof saveTarget };
+	settings: { readConfig: typeof readConfig; saveTarget: typeof saveTarget; deleteTarget: typeof deleteTarget };
 }
 
 export function activate(context: vscode.ExtensionContext): TestApi | undefined {
@@ -42,7 +42,7 @@ export function activate(context: vscode.ExtensionContext): TestApi | undefined 
 		}),
 	);
 	void controller.schedule();
-	return { controller, store, settings: { readConfig, saveTarget } };
+	return { controller, store, settings: { readConfig, saveTarget, deleteTarget } };
 }
 
 export function deactivate(): void {}

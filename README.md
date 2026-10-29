@@ -5,13 +5,15 @@ Keep chosen VS Code extensions **off everywhere except in the workspaces, reposi
 ## How it works
 
 - A **Category** is a named set of extensions (`python`, `node`, …). An extension in at least one category is *managed*: it is turned off for the whole profile and turned on only in the Targets that use one of its categories.
-- A window's **Target** is the first of: the saved `.code-workspace` file, the git repository (identified by its `origin` URL, so re-clones and subfolders match), or the folder.
+- A window's **Target** is the first of: the saved `.code-workspace` file, the git repository (identified by its `origin` URL, so re-clones match) or the subfolder of it that is open, or the folder.
 - A Target applies categories and can **override** single extensions (on or off). Rules saved under an earlier key still apply when a repository gains a remote or a folder becomes a repository, and move to the current key the next time they are saved.
+- A folder, repository or repository subfolder with no rules of its own **inherits** the rules of the nearest enclosing one that has some: a folder inside a configured folder, a repository inside a configured folder, or a subfolder of a configured repository. Inheritance is live, so editing the parent changes every folder that inherits from it. A notification says so when such a window opens (not after a reload this extension asked for, and not when the parent is your home folder, which makes `folder:~` a quiet catch-all). The status bar shows `· from <parent>`.
+- **Customize** (in that notification, or when choosing categories or overrides) gives the folder its own rules, starting from the parent's. Its own rules replace the parent's entirely; they are not combined. **Use Parent's Rules** deletes them again, after confirming. A repository subfolder's own rules are saved under `repo:<origin>#<path>`.
 - Extensions in no category are never touched. This extension never manages itself.
 - Remote connection resolvers (SSH, WSL, Dev Containers, etc.) and their dependencies are never automatically disabled, even if they belong to a category or a Target disables them. They must be available before connecting to a remote Target. Earlier disable entries written by this tool are removed on the next evaluation; accept **Reload Window** to apply the repair. Manual disables are preserved.
 - Dependencies of an enabled extension are enabled with it.
 
-Nothing is disabled until you **activate** it on a machine, by answering the first prompt. After that, opening an unconfigured Target asks which categories to use. Changes apply after **Reload Window**; the extension asks but never reloads on its own.
+Nothing is disabled until you **activate** it on a machine, by answering the first prompt. After that, opening an unconfigured Target (one with no rules and nothing to inherit) asks which categories to use; for a repository subfolder the answer is saved for the whole repository. Changes apply after **Reload Window**; the extension asks but never reloads on its own.
 
 Empty windows and unsaved multi-root workspaces have no Target, so managed extensions stay off there.
 
@@ -30,8 +32,9 @@ The settings are application-scoped, so VS Code stores them in the **Default** p
     "enable": [],
     "disable": ["ms-python.mypy-type-checker"]
   },
+  "repo:github.com/acme/api#docs": { "categories": [] },             // a subfolder opened on its own; replaces the repo's rules
   "workspace:~/work/web.code-workspace": { "categories": ["*"] },   // * = every managed extension
-  "folder:~/scratch/foo": { "categories": [] }                      // everything managed stays off
+  "folder:~/scratch/foo": { "categories": [] }                      // everything managed stays off, here and in folders below
 }
 ```
 

@@ -7,7 +7,7 @@ A personal VS Code extension that keeps chosen extensions off everywhere except 
 ### Targets
 
 **Target**:
-The thing a window is bound to for extension rules: a Workspace File if one is open, otherwise the Repository containing the folder, otherwise the Folder itself. Exactly one per window; no layering between levels.
+The thing a window is bound to for extension rules: a Workspace File if one is open, otherwise the Repository Subfolder or Repository containing the folder, otherwise the Folder itself. Exactly one per window. A Target's rules are never layered on top of another's: it uses either its own or, if it has none, its Parent Target's.
 _Avoid_: Scope, context, project
 
 **Workspace File**:
@@ -18,11 +18,21 @@ _Avoid_: Multi-root workspace (unsaved ones are not Targets)
 A git repository, identified by its normalized `origin` remote URL, or its root path when it has no remote.
 _Avoid_: Repo path, clone
 
+**Repository Subfolder**:
+A folder below a Repository's root, opened on its own. Identified by the Repository plus its path inside it (`repo:github.com/acme/api#packages/web`), so re-clones match.
+
 **Folder**:
 A single opened directory that is not inside a Repository and not part of a Workspace File.
 
+**Parent Target**:
+The nearest enclosing Repository Subfolder, Repository or Folder that has an entry in the configuration. Workspace Files have none.
+_Avoid_: Ancestor, base
+
+**Inherited Target**:
+A Repository Subfolder, Repository or Folder with no entry of its own that uses its Parent Target's rules, live. Giving it its own entry (Customize) replaces the inherited rules entirely; deleting that entry makes it inherit again.
+
 **Unconfigured Target**:
-A Target with no entry in the configuration yet; opening one prompts the user to choose Categories or extensions.
+A Target with no entry in the configuration and no Parent Target; opening one prompts the user to choose Categories or extensions. For a Repository Subfolder, the answer is saved for the Repository.
 
 **Unmanaged Window**:
 A window with no Target: an empty window or an unsaved multi-root workspace.

@@ -19,10 +19,19 @@ export async function saveCategories(categories: Config['categories']): Promise<
 
 /** Replaces one Target's rules and stores them under its current key, dropping the older keys they were saved under. */
 export async function saveTarget(config: Config, target: Target, value: TargetConfig): Promise<void> {
-	const replaced = new Set(keysOf(target).map(k => k.toLowerCase()));
-	const targets = Object.fromEntries(Object.entries(config.targets).filter(([k]) => !replaced.has(k.toLowerCase())).map(([k, v]) => [k, serializeTarget(v)]));
+	const targets = withoutTarget(config, target);
 	targets[target.key] = serializeTarget(value);
 	await settings().update('targets', targets, vscode.ConfigurationTarget.Global);
+}
+
+function withoutTarget(config: Config, target: Target): Record<string, Record<string, string[]>> {
+	const replaced = new Set(keysOf(target).map(k => k.toLowerCase()));
+	return Object.fromEntries(Object.entries(config.targets).filter(([k]) => !replaced.has(k.toLowerCase())).map(([k, v]) => [k, serializeTarget(v)]));
+}
+
+/** Removes a Target's own rules, under its current key and every older one, so it inherits again. */
+export async function deleteTarget(config: Config, target: Target): Promise<void> {
+	await settings().update('targets', withoutTarget(config, target), vscode.ConfigurationTarget.Global);
 }
 
 /** Drops ids from every category and Target; used by "Remove from config". */

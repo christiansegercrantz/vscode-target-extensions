@@ -1,11 +1,11 @@
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import * as vscode from 'vscode';
-import { findTarget, referencesSelf, type Config } from '../core/config';
+import { findRules, findTarget, referencesSelf, type Config, type Rules } from '../core/config';
 import { writeMirror } from '../core/ownedMirror';
 import { planTarget, type Plan } from '../core/plan';
 import { pendingChanges, reconcile, type EnablementLists, type EnablementStore, type Ownership } from '../core/reconcile';
-import { keysOf, type Target } from '../core/target';
+import { HOME_FOLDER_KEY, keysOf, setupTarget, type Target } from '../core/target';
 import { readInstalled, resolveHost, type Host, type InstalledExtension } from './inventory';
 import { readConfig, removeIds, saveTarget } from './settings';
 import { currentTarget } from './target';
@@ -14,15 +14,23 @@ const ACTIVATED = 'activated';
 const OWNED_GLOBAL = 'owned.globalDisabled';
 const OWNED_WS_ENABLED = 'owned.workspaceEnabled';
 const OWNED_WS_DISABLED = 'owned.workspaceDisabled';
+/** When this window last reloaded because the tool asked; such a reload does not announce inheritance again. */
+const RELOAD_REQUESTED_AT = 'reloadRequestedAt';
+const RELOAD_GRACE_MS = 2 * 60_000;
 const PICK_FROM_LOCAL = 'Pick from local…';
 
 export interface State {
 	config: Config;
 	target: Target | undefined;
+	/** The rules in effect: the Target's own, or those it inherits from an enclosing Target. */
+	rules: Rules | undefined;
 	installed: Map<string, InstalledExtension>;
 	plan: Plan;
 	activated: boolean;
 }
+
+/** The enclosing Target this window inherits its rules from, if it has none of its own. */
+export const inheritedFrom = ({ target, rules }: Pick<State, 'target' | 'rules'>): Target | undefined => (rules && rules.owner !== target ? rules.owner : undefined);
 
 /** Decides what this window's extensions should be and applies it, asking the user when something needs a choice. */
 export class Controller implements vscode.Disposable {
@@ -31,6 +39,7 @@ export class Controller implements vscode.Disposable {
 	private target: Promise<Target | undefined> | undefined;
 	private readonly notified = new Set<string>();
 	private promptedSetup = false;
+	private readonly afterOwnReload: boolean;
 	private host: Host | undefined;
 	private readonly status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
 	private readonly log = vscode.window.createOutputChannel('Target Extensions');
@@ -38,6 +47,11 @@ export class Controller implements vscode.Disposable {
 	constructor(private readonly context: vscode.ExtensionContext, private readonly store: EnablementStore) {
 		this.selfId = context.extension.id.toLowerCase();
 		this.status.command = 'targetExtensions.menu';
+		const requestedAt = context.workspaceState.get<number>(RELOAD_REQUESTED_AT);
+		this.afterOwnReload = requestedAt !== undefined && Date.now() - requestedAt < RELOAD_GRACE_MS;
+		if (requestedAt !== undefined) {
+			void context.workspaceState.update(RELOAD_REQUESTED_AT, undefined);
+		}
 	}
 
 	dispose(): void {
@@ -76,7 +90,8 @@ export class Controller implements vscode.Disposable {
 		this.host = host;
 		const [target, installed] = await Promise.all([this.target, readInstalled(host)]);
 		const config = readConfig();
-		return { config, target, installed, plan: planTarget(config, target && keysOf(target), installed, this.selfId), activated: this.isActivated() };
+		const rules = target && findRules(config, target);
+		return { config, target, rules, installed, plan: planTarget(config, rules && keysOf(rules.owner), installed, this.selfId), activated: this.isActivated() };
 	}
 
 	private readOwned(): Ownership {
@@ -129,6 +144,7 @@ export class Controller implements vscode.Disposable {
 		if (target && !plan.configured) {
 			this.promptSetup(state);
 		}
+		this.notifyInherited(state);
 		this.promptReload(result.lists, state, new Set([...plan.managed, ...plan.disable, ...result.owned.workspaceDisabled, ...[...plan.protected].filter(id => installed.has(id))]));
 	}
 
@@ -152,7 +168,8 @@ export class Controller implements vscode.Disposable {
 		});
 	}
 
-	private renderStatus({ target, plan, installed, activated }: State): void {
+	private renderStatus(state: State): void {
+		const { target, plan, installed, activated } = state;
 		if (!target) {
 			this.status.hide();
 			return;
@@ -167,8 +184,9 @@ export class Controller implements vscode.Disposable {
 			tooltip = 'This Target has no rules yet; all managed extensions are off.';
 		} else {
 			const off = [...plan.managed].filter(id => installed.has(id) && !plan.enable.has(id)).length;
-			detail = `${off} off`;
-			tooltip = `${off} managed extension(s) are off here.`;
+			const parent = inheritedFrom(state);
+			detail = parent ? `${off} off · from ${parent.label}` : `${off} off`;
+			tooltip = `${off} managed extension(s) are off here.${parent ? `\nRules inherited from ${parent.label} (${state.rules!.key}).` : ''}`;
 		}
 		this.status.text = `$(extensions) ${target.label} · ${detail}`;
 		this.status.tooltip = `${tooltip}\n${target.key}`;
@@ -240,6 +258,17 @@ export class Controller implements vscode.Disposable {
 		}
 	}
 
+	/** Says once per window load that it borrows an enclosing Target's rules, except for the home folder catch-all. */
+	private notifyInherited(state: State): void {
+		const parent = inheritedFrom(state);
+		if (!state.target || !parent || parent.key === HOME_FOLDER_KEY || this.afterOwnReload || !this.once(`inherit:${parent.key}`)) {
+			return;
+		}
+		void vscode.window
+			.showInformationMessage(`${state.target.label} uses ${parent.label}'s extension rules.`, 'Customize', 'OK')
+			.then(choice => choice === 'Customize' && vscode.commands.executeCommand('targetExtensions.customize'));
+	}
+
 	private promptSetup({ config, target, plan, activated }: State): void {
 		if (!target || this.promptedSetup) {
 			return;
@@ -268,14 +297,15 @@ export class Controller implements vscode.Disposable {
 			return;
 		}
 
+		const setup = setupTarget(target);
 		void vscode.window
-			.showInformationMessage(`${target.label} has no extension rules yet. Choose which extensions stay on here.`, 'Choose categories…', 'Enable all', 'Keep off', 'Not now')
+			.showInformationMessage(`${setup.label} has no extension rules yet. Choose which extensions stay on here.`, 'Choose categories…', 'Enable all', 'Keep off', 'Not now')
 			.then(async choice => {
 				if (choice === 'Choose categories…') {
 					await vscode.commands.executeCommand('targetExtensions.chooseCategories');
 				} else if (choice === 'Enable all' || choice === 'Keep off') {
-					const existing = findTarget(config, keysOf(target))?.config;
-					await saveTarget(config, target, { categories: choice === 'Enable all' ? ['*'] : [], enable: existing?.enable ?? [], disable: existing?.disable ?? [] });
+					const existing = findTarget(config, keysOf(setup))?.config;
+					await saveTarget(config, setup, { categories: choice === 'Enable all' ? ['*'] : [], enable: existing?.enable ?? [], disable: existing?.disable ?? [] });
 					await this.setActivated(true);
 					await this.schedule();
 				}
@@ -295,6 +325,11 @@ export class Controller implements vscode.Disposable {
 		const where = target?.label ?? 'this window';
 		void vscode.window
 			.showInformationMessage(`Extensions for ${where}: ${diff.disabled.length} to turn off, ${diff.enabled.length} to turn on. Reload to apply.`, 'Reload Window', 'Later')
-			.then(choice => choice === 'Reload Window' && vscode.commands.executeCommand('workbench.action.reloadWindow'));
+			.then(async choice => {
+				if (choice === 'Reload Window') {
+					await this.context.workspaceState.update(RELOAD_REQUESTED_AT, Date.now());
+					await vscode.commands.executeCommand('workbench.action.reloadWindow');
+				}
+			});
 	}
 }

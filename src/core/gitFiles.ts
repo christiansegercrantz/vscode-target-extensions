@@ -25,7 +25,8 @@ function originUrl(config: string): string | undefined {
  * such as a remote window's. Follows the `.git` file and `commondir` that linked worktrees and submodules use.
  */
 export async function gitInfoFromFiles(folder: string, read: ReadText): Promise<GitInfo | undefined> {
-	for (let dir = posix.normalize(folder); ; dir = posix.dirname(dir)) {
+	const start = posix.normalize(folder);
+	for (let dir = start; ; dir = posix.dirname(dir)) {
 		let gitDir = posix.join(dir, '.git');
 		let config = await read(posix.join(gitDir, 'config'));
 		if (config === undefined) {
@@ -37,7 +38,7 @@ export async function gitInfoFromFiles(folder: string, read: ReadText): Promise<
 			}
 		}
 		if (config !== undefined) {
-			return { root: dir, originUrl: originUrl(config) };
+			return { root: dir, originUrl: originUrl(config), prefix: posix.relative(dir, start) };
 		}
 		if (dir === posix.dirname(dir)) {
 			return undefined;

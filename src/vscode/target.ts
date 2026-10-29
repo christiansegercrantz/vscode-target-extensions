@@ -17,11 +17,12 @@ async function git(cwd: string, ...args: string[]): Promise<string | undefined> 
 }
 
 async function gitInfo(folder: string): Promise<GitInfo | undefined> {
-	const root = await git(folder, 'rev-parse', '--show-toplevel');
-	if (!root) {
+	const out = await git(folder, 'rev-parse', '--show-toplevel', '--show-prefix');
+	if (!out) {
 		return undefined;
 	}
-	return { root, originUrl: await git(folder, 'config', '--get', 'remote.origin.url') };
+	const [root, prefix = ''] = out.split(/\r?\n/);
+	return { root: root!, prefix, originUrl: await git(folder, 'config', '--get', 'remote.origin.url') };
 }
 
 async function readText(uri: vscode.Uri): Promise<string | undefined> {

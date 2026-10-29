@@ -1,11 +1,11 @@
 import { join } from 'node:path';
 import * as vscode from 'vscode';
-import { ALL_CATEGORY, categoriesOf, findTarget, setMembership, type Config, type TargetConfig } from '../core/config';
+import { ALL_CATEGORY, categoriesOf, inheritedRules, setMembership, type Config, type TargetConfig } from '../core/config';
 import { planTarget } from '../core/plan';
-import { keysOf } from '../core/target';
+import { keysOf, setupTarget, type Target } from '../core/target';
 import type { Controller, State } from './controller';
 import { resolveHost } from './inventory';
-import { saveCategories, saveTarget } from './settings';
+import { deleteTarget, saveCategories, saveTarget } from './settings';
 
 const NO_TARGET = 'Open a folder or a saved workspace first: this window has no Target.';
 
@@ -24,12 +24,37 @@ async function requireTarget(controller: Controller): Promise<(State & { target:
 	return state as State & { target: NonNullable<State['target']> };
 }
 
-async function chooseCategories(controller: Controller): Promise<void> {
+/**
+ * Which Target's rules to edit, and the rules to start from. A window that inherits asks whether to edit the parent
+ * or to give itself its own rules, starting from the parent's; `customize` skips the question. A Target with no
+ * rules anywhere edits its setup Target, the Repository for a subfolder of one.
+ */
+async function editTarget({ target, rules }: State & { target: Target }, customize = false): Promise<{ target: Target; current?: TargetConfig } | undefined> {
+	if (!rules) {
+		return { target: setupTarget(target) };
+	}
+	if (rules.owner === target) {
+		return { target, current: rules.config };
+	}
+	if (customize) {
+		return { target, current: rules.config };
+	}
+	const choice = await vscode.window.showQuickPick(
+		[
+			{ label: `$(arrow-up) Edit parent "${rules.owner.label}"`, description: 'also changes every folder that inherits from it', owner: rules.owner },
+			{ label: `$(edit) Customize ${target.label}`, description: `own rules, starting from ${rules.owner.label}'s`, owner: target },
+		],
+		{ title: `${target.label} uses ${rules.owner.label}'s rules` },
+	);
+	return choice && { target: choice.owner, current: rules.config };
+}
+
+async function chooseCategories(controller: Controller, customize = false): Promise<void> {
 	const state = await requireTarget(controller);
 	if (!state) {
 		return;
 	}
-	const { config, target } = state;
+	const { config } = state;
 	const names = Object.keys(config.categories);
 	if (!names.length) {
 		const choice = await vscode.window.showInformationMessage('There are no categories yet.', 'Create category…');
@@ -38,7 +63,11 @@ async function chooseCategories(controller: Controller): Promise<void> {
 		}
 		return;
 	}
-	const current = findTarget(config, keysOf(target))?.config;
+	const edit = await editTarget(state, customize);
+	if (!edit) {
+		return;
+	}
+	const { target, current } = edit;
 	const picked = await vscode.window.showQuickPick(
 		[
 			{ label: '$(star) All managed extensions', description: ALL_CATEGORY, category: ALL_CATEGORY, picked: !!current?.categories.includes(ALL_CATEGORY) },
@@ -65,8 +94,13 @@ async function overrideExtensions(controller: Controller): Promise<void> {
 	if (!state) {
 		return;
 	}
-	const { config, target, installed, plan } = state;
-	const current: TargetConfig = findTarget(config, keysOf(target))?.config ?? { categories: [], enable: [], disable: [] };
+	const { config, installed, plan } = state;
+	const edit = await editTarget(state);
+	if (!edit) {
+		return;
+	}
+	const { target } = edit;
+	const current: TargetConfig = edit.current ?? { categories: [], enable: [], disable: [] };
 
 	// What the categories alone would do, so only the differences are stored as overrides.
 	const base: Config = { ...config, targets: { ...config.targets, [target.key]: { ...current, enable: [], disable: [] } } };
@@ -250,10 +284,42 @@ async function restoreAll(controller: Controller): Promise<void> {
 	}
 }
 
-async function menu(): Promise<void> {
-	const entries: { label: string; command: string }[] = [
+/** Deletes this Target's own rules so it inherits again, after saying exactly what is removed. */
+async function useParentRules(controller: Controller): Promise<void> {
+	const state = await requireTarget(controller);
+	if (!state) {
+		return;
+	}
+	const { config, target, rules } = state;
+	if (rules?.owner !== target) {
+		void vscode.window.showInformationMessage(`${target.label} has no rules of its own to delete.`);
+		return;
+	}
+	const parent = inheritedRules(config, target);
+	if (!parent) {
+		void vscode.window.showInformationMessage(`No folder above ${target.label} has rules to inherit.`);
+		return;
+	}
+	const own = new Set(keysOf(target).map(k => k.toLowerCase()));
+	const removed = Object.keys(config.targets).filter(k => own.has(k.toLowerCase()));
+	const choice = await vscode.window.showWarningMessage(
+		`Delete ${target.label}'s own rules and use ${parent.owner.label}'s instead?`,
+		{ modal: true, detail: `This removes ${removed.map(k => `"${k}"`).join(', ')} from your settings.` },
+		'Delete and Inherit',
+	);
+	if (choice === 'Delete and Inherit') {
+		await deleteTarget(config, target);
+		await controller.schedule();
+	}
+}
+
+async function menu(controller: Controller): Promise<void> {
+	const { config, target, rules } = await controller.gather();
+	const canInherit = !!target && rules?.owner === target && !!inheritedRules(config, target);
+	const entries: { label: string; description?: string; command: string }[] = [
 		{ label: '$(checklist) Choose categories for this Target…', command: 'targetExtensions.chooseCategories' },
 		{ label: '$(list-selection) Override extensions for this Target…', command: 'targetExtensions.overrideExtensions' },
+		...(canInherit ? [{ label: "$(arrow-up) Use parent's rules…", description: "deletes this folder's rules", command: 'targetExtensions.useParentRules' }] : []),
 		{ label: '$(symbol-namespace) Edit categories…', command: 'targetExtensions.editCategories' },
 		{ label: '$(tag) Set categories for an extension…', command: 'targetExtensions.setExtensionCategories' },
 		{ label: '$(sync) Apply now', command: 'targetExtensions.apply' },
@@ -269,8 +335,10 @@ async function menu(): Promise<void> {
 
 export function registerCommands(context: vscode.ExtensionContext, controller: Controller): void {
 	const register = (id: string, fn: (...args: unknown[]) => Promise<unknown>) => context.subscriptions.push(vscode.commands.registerCommand(id, fn));
-	register('targetExtensions.menu', menu);
+	register('targetExtensions.menu', () => menu(controller));
 	register('targetExtensions.chooseCategories', () => chooseCategories(controller));
+	register('targetExtensions.customize', () => chooseCategories(controller, true));
+	register('targetExtensions.useParentRules', () => useParentRules(controller));
 	register('targetExtensions.overrideExtensions', () => overrideExtensions(controller));
 	register('targetExtensions.editCategories', () => editCategories(controller));
 	register('targetExtensions.apply', () => controller.schedule());

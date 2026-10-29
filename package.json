@@ -2,7 +2,7 @@
   "name": "target-extensions",
   "displayName": "Target Extensions",
   "description": "Keep chosen extensions off everywhere except in the workspaces, repositories and folders where you want them.",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "publisher": "csegercrantz",
   "license": "AGPL-3.0-or-later",
   "private": true,
@@ -37,6 +37,16 @@
       {
         "command": "targetExtensions.overrideExtensions",
         "title": "Override Extensions for This Target…",
+        "category": "Target Extensions"
+      },
+      {
+        "command": "targetExtensions.customize",
+        "title": "Customize Rules for This Target…",
+        "category": "Target Extensions"
+      },
+      {
+        "command": "targetExtensions.useParentRules",
+        "title": "Use Parent's Rules for This Target…",
         "category": "Target Extensions"
       },
       {
@@ -84,7 +94,7 @@
           "type": "object",
           "scope": "application",
           "default": {},
-          "markdownDescription": "Per-Target rules, keyed by `workspace:<path>`, `repo:<host>/<owner>/<name>` or `folder:<path>`. `categories` may contain `*` for every managed extension. `enable` and `disable` override the categories. Stored in the Default profile's `settings.json` and shared by every profile; **Target Extensions: Open Config File** opens it.",
+          "markdownDescription": "Per-Target rules, keyed by `workspace:<path>`, `repo:<host>/<owner>/<name>`, `repo:<host>/<owner>/<name>#<sub/path>` (a subfolder of a repository) or `folder:<path>`. A folder or repository with no entry inherits the entry of the nearest enclosing folder or repository that has one; its own entry replaces the inherited one entirely. `categories` may contain `*` for every managed extension. `enable` and `disable` override the categories. Stored in the Default profile's `settings.json` and shared by every profile; **Target Extensions: Open Config File** opens it.",
           "additionalProperties": {
             "type": "object",
             "properties": {

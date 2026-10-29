@@ -43,30 +43,30 @@ describe('resolveTarget', () => {
 			folders: ['/Users/me/work/web'],
 			git: { root: '/Users/me/work/web', originUrl: 'git@github.com:acme/web.git' },
 		}));
-		expect(t).toEqual({ kind: 'workspace', key: 'workspace:~/work/web.code-workspace', label: 'web', aliases: [] });
+		expect(t).toEqual({ kind: 'workspace', key: 'workspace:~/work/web.code-workspace', label: 'web', aliases: [], parents: [] });
 	});
 
-	it('uses the origin URL for a repository, from any subfolder', async () => {
+	it('uses the origin URL for a repository opened at its root', async () => {
 		const t = await resolveTarget(env({
-			folders: ['/Users/me/code/api/services/x'],
+			folders: ['/Users/me/code/api'],
 			git: { root: '/Users/me/code/api', originUrl: 'https://github.com/Acme/api.git' },
 		}));
-		expect(t).toEqual({
+		expect(t).toMatchObject({
 			kind: 'repo',
 			key: 'repo:github.com/acme/api',
 			label: 'acme/api',
-			aliases: ['repo:~/code/api', 'folder:~/code/api/services/x'],
+			aliases: ['repo:~/code/api', 'folder:~/code/api'],
 		});
 	});
 
 	it('falls back to the repository root when there is no remote', async () => {
-		const t = await resolveTarget(env({ folders: ['/Users/me/code/api/sub'], git: { root: '/Users/me/code/api' } }));
-		expect(t).toEqual({ kind: 'repo', key: 'repo:~/code/api', label: 'api', aliases: ['folder:~/code/api/sub'] });
+		const t = await resolveTarget(env({ folders: ['/Users/me/code/api'], git: { root: '/Users/me/code/api' } }));
+		expect(t).toMatchObject({ kind: 'repo', key: 'repo:~/code/api', label: 'api', aliases: ['folder:~/code/api'] });
 	});
 
 	it('falls back to the folder outside any repository', async () => {
 		const t = await resolveTarget(env({ folders: ['/Users/me/scratch/foo'] }));
-		expect(t).toEqual({ kind: 'folder', key: 'folder:~/scratch/foo', label: 'foo', aliases: [] });
+		expect(t).toMatchObject({ kind: 'folder', key: 'folder:~/scratch/foo', label: 'foo', aliases: [] });
 	});
 
 	it('has no Target for empty windows or unsaved multi-root workspaces', async () => {

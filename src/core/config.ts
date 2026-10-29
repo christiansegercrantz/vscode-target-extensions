@@ -1,3 +1,5 @@
+import { keysOf, type Target } from './target';
+
 /** Category member meaning "every managed extension". */
 export const ALL_CATEGORY = '*';
 
@@ -56,6 +58,30 @@ export function findTarget(config: Config, keys: string | readonly string[]): { 
 		}
 	}
 	return undefined;
+}
+
+export interface Rules {
+	/** The Target the rules are saved for: the Target itself, or the enclosing one it inherits from. */
+	owner: Target;
+	key: string;
+	config: TargetConfig;
+}
+
+/** Rules of the nearest enclosing Target that has some, ignoring the Target's own. */
+export function inheritedRules(config: Config, target: Target): Rules | undefined {
+	for (const owner of target.parents) {
+		const found = findTarget(config, keysOf(owner));
+		if (found) {
+			return { owner, ...found };
+		}
+	}
+	return undefined;
+}
+
+/** The rules that apply to a Target: its own, else those it inherits. A Target's own rules replace inherited ones entirely. */
+export function findRules(config: Config, target: Target): Rules | undefined {
+	const own = findTarget(config, keysOf(target));
+	return own ? { owner: target, ...own } : inheritedRules(config, target);
 }
 
 /** Extensions in at least one category, minus this extension itself. */

@@ -4,7 +4,7 @@
 // VS Code flushes its storage, as a reload does.
 const assert = require('node:assert/strict');
 const { readFileSync, readdirSync, writeFileSync } = require('node:fs');
-const { join } = require('node:path');
+const { dirname, join } = require('node:path');
 const vscode = require('vscode');
 
 const SELF = 'csegercrantz.target-extensions';
@@ -119,6 +119,30 @@ const phases = {
 		await settings.saveTarget(settings.readConfig(), state.target, { categories: ['demo'], enable: [], disable: [] });
 		const keys = Object.keys(vscode.workspace.getConfiguration('targetExtensions').get('targets'));
 		assert.deepEqual(keys, [TARGET], `the rules moved to the origin key, found ${keys}`);
+	},
+
+	// A repository with no rules of its own uses those of the folder above it, until it gets its own, and goes back
+	// to them when its own are deleted.
+	async inherit({ controller, settings }) {
+		const parentKey = `folder:${dirname(vscode.workspace.workspaceFolders[0].uri.fsPath)}`;
+		const cfg = vscode.workspace.getConfiguration('targetExtensions');
+		await cfg.update('categories', { demo: MANAGED }, vscode.ConfigurationTarget.Global);
+		await cfg.update('targets', { [parentKey]: { categories: ['demo'] } }, vscode.ConfigurationTarget.Global);
+		let state = await controller.gather();
+		assert.equal(state.target.key, TARGET);
+		assert.equal(state.rules.owner.key, parentKey, 'the rules come from the folder above the repository');
+		assert.ok(state.plan.configured, 'an inheriting Target counts as configured');
+		assert.deepEqual(ours([...state.plan.enable].map(id => ({ id }))), [...MANAGED].sort(), "the parent's categories apply");
+
+		await settings.saveTarget(settings.readConfig(), state.target, { categories: [], enable: [], disable: [] });
+		state = await controller.gather();
+		assert.equal(state.rules.owner, state.target, 'own rules replace the inherited ones');
+		assert.deepEqual([...state.plan.enable], [], 'nothing from the parent leaks into own rules');
+
+		await settings.deleteTarget(settings.readConfig(), state.target);
+		state = await controller.gather();
+		assert.equal(state.rules.owner.key, parentKey, 'deleting own rules inherits again');
+		assert.deepEqual(Object.keys(vscode.workspace.getConfiguration('targetExtensions').get('targets')), [parentKey], 'only the parent entry is left');
 	},
 
 	async phase4() {
